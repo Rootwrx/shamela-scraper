@@ -1829,6 +1829,26 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
         buf: list[str] = []
         first_page = True
 
+        # Propagate page_ids from children to parent entries that lack them,
+        # so all hierarchical titles appear in the header even without explicit
+        # page_id in the shamela TOC data.
+        _stack: list[tuple[int, int]] = []  # (level, index in toc_flat)
+        for i, entry in enumerate(toc_flat):
+            lvl = entry.get("level", 0)
+            if not entry.get("label"):
+                continue
+            while _stack and _stack[-1][0] >= lvl:
+                _stack.pop()
+            pid = entry.get("page_id")
+            if pid is not None:
+                for plvl, pi in reversed(_stack):
+                    parent = toc_flat[pi]
+                    if parent.get("page_id") is None:
+                        parent["page_id"] = pid
+                    else:
+                        break
+            _stack.append((lvl, i))
+
         # Prepare breadcrumb tracking: sorted TOC entries by page_id
         sorted_toc = sorted(
             [e for e in toc_flat if e.get("page_id") is not None],
