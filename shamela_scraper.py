@@ -1160,22 +1160,6 @@ def _truncate(title: str, max_words: int = 5) -> str:
     return ' '.join(words[:max_words - 1]) + ' … ' + words[-1]
 
 
-def _truncate_breadcrumb(breadcrumb: str, max_chars: int = 60) -> str:
-    """Truncate long breadcrumb from the middle to avoid header overflow."""
-    if len(breadcrumb) <= max_chars:
-        return breadcrumb
-    parts = breadcrumb.split(" > ")
-    if len(parts) <= 2:
-        return breadcrumb[:max_chars-3] + "…"
-    # Keep first (number + first word) and last segments
-    first = parts[0]
-    first_tokens = first.split(" ", 1)
-    if len(first_tokens) > 1 and len(first_tokens[1]) > 6:
-        first = first_tokens[0] + " " + first_tokens[1].split(" ", 1)[0]
-    last = parts[-1]
-    return f"{first} > … > {last}"
-
-
 
 # NOTE: Visible TOC rendering has been removed per prompt_toc.txt requirements.
 # The PDF's native outline/bookmark feature (via WeasyPrint bookmark-level CSS)
@@ -1285,7 +1269,14 @@ def _build_html_css(meta: dict) -> str:
     }}
     @page :first {{
         @top-left   {{ content: none; }}
-        @top-right  {{ content: none; }}
+        @top-right {{
+            content: string(book-title);
+            font-family: {font_head};
+            font-size: 9pt;
+            font-weight: 600;
+            color: {TEAL};
+            text-align: left;
+        }}
         @top-center {{ content: none; }}
         @bottom-center {{ content: none; }}
         @bottom-left  {{ content: none; }}
@@ -1729,9 +1720,9 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
             f'<style>{css}</style></head><body>\n'
         )
 
-        # Hidden span: sets chapter-title to truncated book title (fallback)
+        # Hidden span: sets book-title and chapter-title to book title (fallback)
         book_title = meta.get("title", "كتاب")
-        fh.write(f'<span style="display:none; string-set: chapter-title content()">'
+        fh.write(f'<span style="display:none; string-set: book-title content(), chapter-title content()">'
                  f'{_e(_truncate(book_title))}</span>\n')
 
         # ── COVER (ornate multi-layer design) ─────────────────────────
@@ -1844,9 +1835,9 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
                     toc_idx += 1
 
             # Build breadcrumb path for this page (top-level first)
-            page_breadcrumb = _truncate_breadcrumb(" > ".join(
+            page_breadcrumb = " > ".join(
                 label for label, _ in breadcrumb_stack if label
-            )) if breadcrumb_stack else ""
+            ) if breadcrumb_stack else ""
 
             # volume divider
             if pid and pid in vol_boundaries and not first_page:
