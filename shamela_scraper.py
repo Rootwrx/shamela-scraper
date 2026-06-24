@@ -1635,6 +1635,8 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
         import re as _re
         return _re.sub(r'<[^>]+>', '', html_frag)
 
+    paras = page.get("paragraphs")
+
     # Only inject for TOC entries that have matching [...] bracket headings on this page
     page_bracket_texts: set = set()
     if paras:
@@ -1665,7 +1667,6 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
         stripped = plain.strip("[]（）()「」【】《》〈〉").strip()
         return stripped in toc_new_labels or (all_toc_labels and stripped in all_toc_labels)
 
-    paras = page.get("paragraphs")
     if paras:
         for para in paras:
             ptype = para["type"]
