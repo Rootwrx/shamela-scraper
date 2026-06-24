@@ -1228,7 +1228,13 @@ def _build_html_css(meta: dict) -> str:
         margin: 1.6cm 1.8cm 2cm 1.8cm;
         background: {CREAM};
 
-        @top-left {{ content: none; }}
+        @top-left {{
+            content: counter(page);
+            font-family: {font_body};
+            font-size: 10pt;
+            font-weight: 700;
+            color: {RUST};
+        }}
 
         @top-center {{
             content: string(chapter-title);
