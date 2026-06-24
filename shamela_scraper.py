@@ -1516,18 +1516,18 @@ def _build_html_css(meta: dict) -> str:
        ═══════════════════════════════════════════════════════ */
     .toc-numbered-heading {{
         font-family: {font_body};
-        font-size: 14pt;
+        font-size: 12pt;
         font-weight: 700;
         color: {TEAL};
         margin: 0.6em 0 0.1em 0;
         padding: 0;
     }}
     .toc-numbered-heading.toc-nh-0 {{
-        font-size: 20pt;
+        font-size: 16pt;
         color: {GOLD_L};
     }}
     .toc-numbered-heading.toc-nh-1 {{
-        font-size: 17pt;
+        font-size: 14pt;
         color: {RUST};
     }}
 
@@ -1583,12 +1583,14 @@ def _build_html_css(meta: dict) -> str:
 
 def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
                       vol_num_ref: list, page_breadcrumb: str = "",
-                      page_toc_new: list | None = None) -> tuple[str, int]:
+                      page_toc_new: list | None = None,
+                      all_toc_labels: set | None = None) -> tuple[str, int]:
     """
     Return (html_fragment, updated_vol_num) for a single page dict.
     vol_num_ref is a 1-element list used as a mutable int reference.
     page_breadcrumb: full TOC breadcrumb path for this page.
     page_toc_new: list of (label, level, number) for TOC entries starting on this page.
+    all_toc_labels: set of all TOC entry labels (for dedup across all pages).
     """
     parts = []
     i_dummy = None  # volume divider needs "not first page" guard handled by caller
@@ -1617,7 +1619,8 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
     toc_new_labels = set()
     for label, level, number in (page_toc_new or []):
         if label:
-            toc_new_labels.add(label.strip())
+            stripped_label = label.strip()
+            toc_new_labels.add(stripped_label)
             parts.append(
                 f'<p class="toc-numbered-heading toc-nh-{level}">'
                 f'{number}. {_e(label)}</p>\n'
@@ -1639,8 +1642,8 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
                 for line in para["lines"]:
                     if line.strip():
                         text = line.strip()
-                        stripped = text.strip("[]").strip()
-                        if stripped in toc_new_labels:
+                        stripped = text.strip("[]（）()「」").strip()
+                        if stripped in toc_new_labels or (all_toc_labels and stripped in all_toc_labels):
                             continue  # replaced by numbered heading
                         parts.append(f'<p class="chapter-heading">{text}</p>')
             else:
@@ -1761,6 +1764,14 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
         fh.write('<div class="section-text">\n')
         fh.write('<h2>نص الكتاب</h2>\n')
 
+        # Build all-toc-labels set for cross-page heading dedup
+        all_toc_labels: set = set()
+        for entry in toc_flat:
+            label = entry.get("label", "").strip()
+            if label:
+                all_toc_labels.add(label)
+
+        # Visible TOC heading HTML parts cache
         buf: list[str] = []
         first_page = True
 
@@ -1813,7 +1824,8 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
                 vol_num[0] += 1
 
             frag, _ = _render_page_html(page, toc_by_page, vol_boundaries, vol_num,
-                                         page_breadcrumb, page_toc_new)
+                                         page_breadcrumb, page_toc_new,
+                                         all_toc_labels)
             buf.append(frag)
             first_page = False
 
