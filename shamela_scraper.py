@@ -1518,6 +1518,26 @@ def _build_html_css(meta: dict) -> str:
     {toc_bm_css}
 
     /* ═══════════════════════════════════════════════════════
+       NUMBERED HEADINGS  (visible TOC entry markers)
+       ═══════════════════════════════════════════════════════ */
+    .toc-numbered-heading {{
+        font-family: {font_body};
+        font-size: 12pt;
+        font-weight: 700;
+        color: {TEAL};
+        margin: 0.6em 0 0.1em 0;
+        padding: 0;
+    }}
+    .toc-numbered-heading.toc-nh-0 {{
+        font-size: 14pt;
+        color: {BROWN};
+    }}
+    .toc-numbered-heading.toc-nh-1 {{
+        font-size: 13pt;
+        color: {SEPIA};
+    }}
+
+    /* ═══════════════════════════════════════════════════════
        AUTHOR BIO
        ═══════════════════════════════════════════════════════ */
     .author-bio {{
@@ -1568,11 +1588,13 @@ def _build_html_css(meta: dict) -> str:
 
 
 def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
-                      vol_num_ref: list, page_breadcrumb: str = "") -> tuple[str, int]:
+                      vol_num_ref: list, page_breadcrumb: str = "",
+                      page_toc_new: list | None = None) -> tuple[str, int]:
     """
     Return (html_fragment, updated_vol_num) for a single page dict.
     vol_num_ref is a 1-element list used as a mutable int reference.
     page_breadcrumb: full TOC breadcrumb path for this page.
+    page_toc_new: list of (label, level, number) for TOC entries starting on this page.
     """
     parts = []
     i_dummy = None  # volume divider needs "not first page" guard handled by caller
@@ -1597,6 +1619,16 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
                     f'{_e(label)}</div>'
                 )
 
+    # ── Inject visible numbered headings for new TOC entries ────────────
+    toc_new_labels = set()
+    for label, level, number in (page_toc_new or []):
+        if label:
+            toc_new_labels.add(label.strip())
+            parts.append(
+                f'<p class="toc-numbered-heading toc-nh-{level}">'
+                f'{number}. {_e(label)}</p>\n'
+            )
+
     parts.append('<div class="page-entry"><div class="page-text">')
 
     paras = page.get("paragraphs")
@@ -1612,7 +1644,10 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
             elif ptype == "heading":
                 for line in para["lines"]:
                     if line.strip():
-                        parts.append(f'<p class="chapter-heading">{line.strip()}</p>')
+                        text = line.strip()
+                        if text in toc_new_labels:
+                            continue  # replaced by numbered heading above
+                        parts.append(f'<p class="chapter-heading">{text}</p>')
             else:
                 for line in para["lines"]:
                     if line.strip():
@@ -1746,6 +1781,9 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
         for page in pages_iter:
             pid = page.get("page_id")
 
+            # Collect new TOC entries starting on this page (with computed numbers)
+            page_toc_new: list[tuple[str, int, str]] = []
+
             # Update breadcrumb stack with any TOC entries starting on or before this page
             if pid is not None:
                 while toc_idx < len(sorted_toc) and sorted_toc[toc_idx]["page_id"] <= pid:
@@ -1763,6 +1801,7 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
                     label = entry["label"]
                     if label:
                         breadcrumb_stack.append((f"{number} {label}", level))
+                        page_toc_new.append((label, level, number))
                     toc_idx += 1
 
             # Build breadcrumb path for this page (top-level first)
@@ -1779,7 +1818,7 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
                 vol_num[0] += 1
 
             frag, _ = _render_page_html(page, toc_by_page, vol_boundaries, vol_num,
-                                         page_breadcrumb)
+                                         page_breadcrumb, page_toc_new)
             buf.append(frag)
             first_page = False
 
