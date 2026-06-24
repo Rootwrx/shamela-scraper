@@ -86,8 +86,29 @@ HEADERS = {
 # ═══════════════════════════════════════════════════════════════════════════
 # SMALL UTILITIES
 # ═══════════════════════════════════════════════════════════════════════════
+def _truncate_middle(text: str, max_len: int = 80) -> str:
+    """Truncate from the middle, keeping the full last segment (number + label)."""
+    if len(text) <= max_len:
+        return text
+    parts = text.split(" > ")
+    if len(parts) < 2:
+        half = max_len // 2 - 1
+        return text[:half] + "⋯" + text[-half:]
+    last = parts[-1]
+    remaining = max_len - len(last) - 3  # " ⋯ "
+    if remaining <= 0:
+        half = max_len // 2 - 1
+        return text[:half] + "⋯" + text[-half:]
+    first_parts = []
+    for p in parts[:-1]:
+        candidate = " > ".join(first_parts + [p])
+        if len(candidate) <= remaining:
+            first_parts.append(p)
+        else:
+            break
+    return " > ".join(first_parts) + " ⋯ " + last
 
-_ILLEGAL_CHARS = re.compile(r'[\\/:*?"<>|\n\r\t]')
+
 
 
 def sanitize_filename(name: str, max_len: int = 80, fallback: str = "unknown") -> str:
@@ -1215,7 +1236,8 @@ def _build_html_css(meta: dict) -> str:
         @bottom-center {{
             content: counter(page, lower-roman);
             font-family: {font_body};
-            font-size: 9pt;
+            font-size: 8pt;
+            font-weight: 500;
             color: {GOLD_L};
         }}
         @top-left  {{ content: none; }}
@@ -1231,8 +1253,8 @@ def _build_html_css(meta: dict) -> str:
         @top-left {{
             content: counter(page);
             font-family: {font_body};
-            font-size: 10pt;
-            font-weight: 700;
+            font-size: 8pt;
+            font-weight: 500;
             color: {RUST};
             padding-left: 0.5em;
         }}
@@ -1240,12 +1262,13 @@ def _build_html_css(meta: dict) -> str:
         @top-center {{
             content: string(chapter-title);
             font-family: {font_head};
-            font-size: 10pt;
-            font-weight: 600;
+            font-size: 8pt;
+            font-weight: 500;
             color: {TEAL};
             text-align: center;
             white-space: nowrap;
             overflow: hidden;
+            text-overflow: ellipsis;
         }}
 
         @top-right {{ content: none; }}
@@ -1253,8 +1276,8 @@ def _build_html_css(meta: dict) -> str:
         @bottom-center {{
             content: "— " counter(page) " —";
             font-family: {font_body};
-            font-size: 11pt;
-            font-weight: 700;
+            font-size: 9pt;
+            font-weight: 500;
             color: {RUST};
         }}
         @bottom-left  {{ content: none; }}
@@ -1852,6 +1875,7 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
             page_breadcrumb = " > ".join(
                 label for label, _ in breadcrumb_stack if label
             ) if breadcrumb_stack else ""
+            page_breadcrumb = _truncate_middle(page_breadcrumb)
 
             # volume divider
             if pid and pid in vol_boundaries and not first_page:
