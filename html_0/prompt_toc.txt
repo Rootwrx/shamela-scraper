@@ -1,0 +1,12 @@
+Do NOT generate a visible Table of Contents page inside the document.
+Do NOT reserve any pages for a TOC.
+
+Instead, use the PDF's native outline/bookmark feature so that PDF readers display the document structure in the navigation sidebar (bookmarks panel).
+
+Requirements:
+
+Each heading becomes a bookmark.
+Preserve the hierarchy of sections and subsections.
+Clicking a bookmark should navigate to the corresponding page.
+The PDF should open with bookmarks/outlines enabled when supported by the viewer.
+No visible TOC content should appear anywhere in the PDF.

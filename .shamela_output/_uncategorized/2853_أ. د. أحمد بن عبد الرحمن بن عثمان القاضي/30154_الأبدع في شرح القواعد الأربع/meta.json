@@ -1,0 +1,111 @@
+{
+  "book_id": 30154,
+  "url": "https://shamela.ws/book/30154",
+  "title": "الأبدع في شرح القواعد الأربع",
+  "author": "أحمد بن عبد الرحمن بن عثمان القاضي",
+  "publisher": "دار ابن الجوزي للنشر والتوزيع، الرياض - السعودية",
+  "edition": "الأولى، ١٤٤٣ هـ",
+  "author_url": "https://shamela.ws/author/2853",
+  "author_id": "2853",
+  "toc": [
+    {
+      "label": "مقدمة",
+      "page_id": 1,
+      "level": 0,
+      "children": [
+        {
+          "label": "سبب تأليف هذه الرسالة",
+          "page_id": 2,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "مقدمة الرسالة",
+      "page_id": 4,
+      "level": 0
+    },
+    {
+      "label": "القاعدة الأولى",
+      "page_id": 20,
+      "level": 0
+    },
+    {
+      "label": "القاعدة الثانية",
+      "page_id": 22,
+      "level": 0
+    },
+    {
+      "label": "القاعدة الثالثة",
+      "page_id": 29,
+      "level": 0
+    },
+    {
+      "label": "القاعدة الرابعة",
+      "page_id": 31,
+      "level": 0
+    },
+    {
+      "label": "الخلاصة",
+      "page_id": 33,
+      "level": 0
+    },
+    {
+      "label": "المراجع",
+      "page_id": 34,
+      "level": 0
+    }
+  ],
+  "toc_flat": [
+    {
+      "label": "مقدمة",
+      "page_id": 1,
+      "level": 0
+    },
+    {
+      "label": "سبب تأليف هذه الرسالة",
+      "page_id": 2,
+      "level": 1
+    },
+    {
+      "label": "مقدمة الرسالة",
+      "page_id": 4,
+      "level": 0
+    },
+    {
+      "label": "القاعدة الأولى",
+      "page_id": 20,
+      "level": 0
+    },
+    {
+      "label": "القاعدة الثانية",
+      "page_id": 22,
+      "level": 0
+    },
+    {
+      "label": "القاعدة الثالثة",
+      "page_id": 29,
+      "level": 0
+    },
+    {
+      "label": "القاعدة الرابعة",
+      "page_id": 31,
+      "level": 0
+    },
+    {
+      "label": "الخلاصة",
+      "page_id": 33,
+      "level": 0
+    },
+    {
+      "label": "المراجع",
+      "page_id": 34,
+      "level": 0
+    }
+  ],
+  "toc_summary": {
+    "total_entries": 9,
+    "top_level_entries": 8,
+    "max_depth": 2
+  }
+}

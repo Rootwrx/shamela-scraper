@@ -1,0 +1,4118 @@
+{
+  "book_id": 8967,
+  "url": "https://shamela.ws/book/8967",
+  "title": "صفوة التفاسير",
+  "author": "محمد علي الصابوني",
+  "publisher": "دار الصابوني للطباعة والنشر والتوزيع - القاهرة",
+  "edition": "الأولى، ١٤١٧ هـ - ١٩٩٧ م",
+  "volumes": "١",
+  "author_url": "https://shamela.ws/author/1318",
+  "author_id": "1318",
+  "toc": [
+    {
+      "label": "الفاتحة",
+      "page_id": 1,
+      "level": 0
+    },
+    {
+      "label": "البقرة",
+      "page_id": 6,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 6,
+          "level": 1
+        },
+        {
+          "label": "٦",
+          "page_id": 9,
+          "level": 1
+        },
+        {
+          "label": "٨",
+          "page_id": 10,
+          "level": 1
+        },
+        {
+          "label": "٢١",
+          "page_id": 16,
+          "level": 1
+        },
+        {
+          "label": "٢٦",
+          "page_id": 20,
+          "level": 1
+        },
+        {
+          "label": "٣٠",
+          "page_id": 24,
+          "level": 1
+        },
+        {
+          "label": "٣٤",
+          "page_id": 27,
+          "level": 1
+        },
+        {
+          "label": "٤٠",
+          "page_id": 30,
+          "level": 1
+        },
+        {
+          "label": "٤٤",
+          "page_id": 33,
+          "level": 1
+        },
+        {
+          "label": "٤٩",
+          "page_id": 36,
+          "level": 1
+        },
+        {
+          "label": "٥٥",
+          "page_id": 39,
+          "level": 1
+        },
+        {
+          "label": "٦٠",
+          "page_id": 42,
+          "level": 1
+        },
+        {
+          "label": "٦٣",
+          "page_id": 46,
+          "level": 1
+        },
+        {
+          "label": "٦٧",
+          "page_id": 48,
+          "level": 1
+        },
+        {
+          "label": "٧٥",
+          "page_id": 52,
+          "level": 1
+        },
+        {
+          "label": "٨٣",
+          "page_id": 56,
+          "level": 1
+        },
+        {
+          "label": "٨٧",
+          "page_id": 59,
+          "level": 1
+        },
+        {
+          "label": "٩٣",
+          "page_id": 62,
+          "level": 1
+        },
+        {
+          "label": "٩٩",
+          "page_id": 65,
+          "level": 1
+        },
+        {
+          "label": "١٠٤",
+          "page_id": 68,
+          "level": 1
+        },
+        {
+          "label": "١١١",
+          "page_id": 71,
+          "level": 1
+        },
+        {
+          "label": "١١٦",
+          "page_id": 74,
+          "level": 1
+        },
+        {
+          "label": "١٢٤",
+          "page_id": 77,
+          "level": 1
+        },
+        {
+          "label": "١٣٠",
+          "page_id": 81,
+          "level": 1
+        },
+        {
+          "label": "١٣٥",
+          "page_id": 83,
+          "level": 1
+        },
+        {
+          "label": "١٤٢",
+          "page_id": 86,
+          "level": 1
+        },
+        {
+          "label": "١٤٥",
+          "page_id": 89,
+          "level": 1
+        },
+        {
+          "label": "١٥١",
+          "page_id": 92,
+          "level": 1
+        },
+        {
+          "label": "١٥٨",
+          "page_id": 95,
+          "level": 1
+        },
+        {
+          "label": "١٦٣",
+          "page_id": 98,
+          "level": 1
+        },
+        {
+          "label": "١٦٨",
+          "page_id": 102,
+          "level": 1
+        },
+        {
+          "label": "١٧٧",
+          "page_id": 106,
+          "level": 1
+        },
+        {
+          "label": "١٨٣",
+          "page_id": 110,
+          "level": 1
+        },
+        {
+          "label": "١٨٨",
+          "page_id": 115,
+          "level": 1
+        },
+        {
+          "label": "١٩٦",
+          "page_id": 119,
+          "level": 1
+        },
+        {
+          "label": "٢٠٤",
+          "page_id": 123,
+          "level": 1
+        },
+        {
+          "label": "٢١٣",
+          "page_id": 127,
+          "level": 1
+        },
+        {
+          "label": "٢١٩",
+          "page_id": 131,
+          "level": 1
+        },
+        {
+          "label": "٢٢٦",
+          "page_id": 136,
+          "level": 1
+        },
+        {
+          "label": "٢٣١",
+          "page_id": 140,
+          "level": 1
+        },
+        {
+          "label": "٢٣٣",
+          "page_id": 143,
+          "level": 1
+        },
+        {
+          "label": "٢٣٨",
+          "page_id": 147,
+          "level": 1
+        },
+        {
+          "label": "٢٤٣",
+          "page_id": 149,
+          "level": 1
+        },
+        {
+          "label": "٢٥٣",
+          "page_id": 154,
+          "level": 1
+        },
+        {
+          "label": "٢٥٥",
+          "page_id": 157,
+          "level": 1
+        },
+        {
+          "label": "٢٥٨",
+          "page_id": 160,
+          "level": 1
+        },
+        {
+          "label": "٢٦١",
+          "page_id": 163,
+          "level": 1
+        },
+        {
+          "label": "٢٧٠",
+          "page_id": 167,
+          "level": 1
+        },
+        {
+          "label": "٢٧٥",
+          "page_id": 170,
+          "level": 1
+        },
+        {
+          "label": "٢٨٢",
+          "page_id": 174,
+          "level": 1
+        },
+        {
+          "label": "٢٨٤",
+          "page_id": 177,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "آل عمران",
+      "page_id": 180,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 180,
+          "level": 1
+        },
+        {
+          "label": "١٠",
+          "page_id": 184,
+          "level": 1
+        },
+        {
+          "label": "١٨",
+          "page_id": 188,
+          "level": 1
+        },
+        {
+          "label": "٢٦",
+          "page_id": 192,
+          "level": 1
+        },
+        {
+          "label": "٣٣",
+          "page_id": 196,
+          "level": 1
+        },
+        {
+          "label": "٤٢",
+          "page_id": 199,
+          "level": 1
+        },
+        {
+          "label": "٥٢",
+          "page_id": 202,
+          "level": 1
+        },
+        {
+          "label": "٦٤",
+          "page_id": 205,
+          "level": 1
+        },
+        {
+          "label": "٧٥",
+          "page_id": 209,
+          "level": 1
+        },
+        {
+          "label": "٨١",
+          "page_id": 212,
+          "level": 1
+        },
+        {
+          "label": "٩٢",
+          "page_id": 215,
+          "level": 1
+        },
+        {
+          "label": "١٠٤",
+          "page_id": 219,
+          "level": 1
+        },
+        {
+          "label": "١١٣",
+          "page_id": 222,
+          "level": 1
+        },
+        {
+          "label": "١٢١",
+          "page_id": 225,
+          "level": 1
+        },
+        {
+          "label": "١٣٣",
+          "page_id": 228,
+          "level": 1
+        },
+        {
+          "label": "١٤٩",
+          "page_id": 232,
+          "level": 1
+        },
+        {
+          "label": "١٥٩",
+          "page_id": 237,
+          "level": 1
+        },
+        {
+          "label": "١٦٩",
+          "page_id": 240,
+          "level": 1
+        },
+        {
+          "label": "١٨١",
+          "page_id": 244,
+          "level": 1
+        },
+        {
+          "label": "١٩٠",
+          "page_id": 248,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "النساء",
+      "page_id": 252,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 252,
+          "level": 1
+        },
+        {
+          "label": "١١",
+          "page_id": 256,
+          "level": 1
+        },
+        {
+          "label": "١٥",
+          "page_id": 259,
+          "level": 1
+        },
+        {
+          "label": "٢٢",
+          "page_id": 262,
+          "level": 1
+        },
+        {
+          "label": "٣٢",
+          "page_id": 267,
+          "level": 1
+        },
+        {
+          "label": "٤٤",
+          "page_id": 273,
+          "level": 1
+        },
+        {
+          "label": "٥٨",
+          "page_id": 277,
+          "level": 1
+        },
+        {
+          "label": "٧١",
+          "page_id": 282,
+          "level": 1
+        },
+        {
+          "label": "٨٨",
+          "page_id": 287,
+          "level": 1
+        },
+        {
+          "label": "٩٧",
+          "page_id": 292,
+          "level": 1
+        },
+        {
+          "label": "١١٤",
+          "page_id": 297,
+          "level": 1
+        },
+        {
+          "label": "١٣٥",
+          "page_id": 302,
+          "level": 1
+        },
+        {
+          "label": "١٤٨",
+          "page_id": 307,
+          "level": 1
+        },
+        {
+          "label": "١٦٣",
+          "page_id": 312,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "المائدة",
+      "page_id": 316,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 316,
+          "level": 1
+        },
+        {
+          "label": "١١",
+          "page_id": 322,
+          "level": 1
+        },
+        {
+          "label": "٢٧",
+          "page_id": 327,
+          "level": 1
+        },
+        {
+          "label": "٤١",
+          "page_id": 333,
+          "level": 1
+        },
+        {
+          "label": "٥١",
+          "page_id": 339,
+          "level": 1
+        },
+        {
+          "label": "٦٧",
+          "page_id": 345,
+          "level": 1
+        },
+        {
+          "label": "٨٢",
+          "page_id": 350,
+          "level": 1
+        },
+        {
+          "label": "٩٧",
+          "page_id": 356,
+          "level": 1
+        },
+        {
+          "label": "١٠٩",
+          "page_id": 361,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الأنعام",
+      "page_id": 365,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 365,
+          "level": 1
+        },
+        {
+          "label": "١٩",
+          "page_id": 370,
+          "level": 1
+        },
+        {
+          "label": "٣٦",
+          "page_id": 375,
+          "level": 1
+        },
+        {
+          "label": "٥٩",
+          "page_id": 381,
+          "level": 1
+        },
+        {
+          "label": "٧٤",
+          "page_id": 386,
+          "level": 1
+        },
+        {
+          "label": "٩٥",
+          "page_id": 393,
+          "level": 1
+        },
+        {
+          "label": "١١١",
+          "page_id": 398,
+          "level": 1
+        },
+        {
+          "label": "١٢٨",
+          "page_id": 404,
+          "level": 1
+        },
+        {
+          "label": "١٤١",
+          "page_id": 409,
+          "level": 1
+        },
+        {
+          "label": "١٥١",
+          "page_id": 413,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الأعراف",
+      "page_id": 418,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 418,
+          "level": 1
+        },
+        {
+          "label": "٣١",
+          "page_id": 425,
+          "level": 1
+        },
+        {
+          "label": "٥٢",
+          "page_id": 431,
+          "level": 1
+        },
+        {
+          "label": "٧٣",
+          "page_id": 436,
+          "level": 1
+        },
+        {
+          "label": "٩٤",
+          "page_id": 441,
+          "level": 1
+        },
+        {
+          "label": "١٣٠",
+          "page_id": 447,
+          "level": 1
+        },
+        {
+          "label": "١٥٠",
+          "page_id": 453,
+          "level": 1
+        },
+        {
+          "label": "١٧١",
+          "page_id": 460,
+          "level": 1
+        },
+        {
+          "label": "١٨٧",
+          "page_id": 464,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الأنفال",
+      "page_id": 469,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 469,
+          "level": 1
+        },
+        {
+          "label": "٢٤",
+          "page_id": 476,
+          "level": 1
+        },
+        {
+          "label": "٤١",
+          "page_id": 481,
+          "level": 1
+        },
+        {
+          "label": "٦١",
+          "page_id": 487,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "التوبة",
+      "page_id": 493,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 493,
+          "level": 1
+        },
+        {
+          "label": "٢٣",
+          "page_id": 500,
+          "level": 1
+        },
+        {
+          "label": "٣٤",
+          "page_id": 505,
+          "level": 1
+        },
+        {
+          "label": "٤٦",
+          "page_id": 511,
+          "level": 1
+        },
+        {
+          "label": "٦١",
+          "page_id": 517,
+          "level": 1
+        },
+        {
+          "label": "٧٥",
+          "page_id": 522,
+          "level": 1
+        },
+        {
+          "label": "٩٤",
+          "page_id": 528,
+          "level": 1
+        },
+        {
+          "label": "١١١",
+          "page_id": 534,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "يونس",
+      "page_id": 540,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 540,
+          "level": 1
+        },
+        {
+          "label": "٢١",
+          "page_id": 546,
+          "level": 1
+        },
+        {
+          "label": "٤٠",
+          "page_id": 552,
+          "level": 1
+        },
+        {
+          "label": "٧١",
+          "page_id": 558,
+          "level": 1
+        },
+        {
+          "label": "٩٠",
+          "page_id": 562,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "هود",
+      "page_id": 567,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 567,
+          "level": 1
+        },
+        {
+          "label": "٢٥",
+          "page_id": 572,
+          "level": 1
+        },
+        {
+          "label": "٥٠",
+          "page_id": 579,
+          "level": 1
+        },
+        {
+          "label": "٧٤",
+          "page_id": 584,
+          "level": 1
+        },
+        {
+          "label": "١٠٠",
+          "page_id": 591,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "يوسف",
+      "page_id": 596,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 596,
+          "level": 1
+        },
+        {
+          "label": "٢٣",
+          "page_id": 601,
+          "level": 1
+        },
+        {
+          "label": "٤٣",
+          "page_id": 609,
+          "level": 1
+        },
+        {
+          "label": "٦٩",
+          "page_id": 615,
+          "level": 1
+        },
+        {
+          "label": "٩٤",
+          "page_id": 620,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الرعد",
+      "page_id": 625,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 625,
+          "level": 1
+        },
+        {
+          "label": "١٧",
+          "page_id": 631,
+          "level": 1
+        },
+        {
+          "label": "٣٥",
+          "page_id": 638,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "إبراهيم",
+      "page_id": 641,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 641,
+          "level": 1
+        },
+        {
+          "label": "١٨",
+          "page_id": 645,
+          "level": 1
+        },
+        {
+          "label": "٣٥",
+          "page_id": 650,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الحجر",
+      "page_id": 654,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 654,
+          "level": 1
+        },
+        {
+          "label": "٤٥",
+          "page_id": 659,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "النحل",
+      "page_id": 665,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 665,
+          "level": 1
+        },
+        {
+          "label": "٣٠",
+          "page_id": 671,
+          "level": 1
+        },
+        {
+          "label": "٥١",
+          "page_id": 675,
+          "level": 1
+        },
+        {
+          "label": "٧٥",
+          "page_id": 680,
+          "level": 1
+        },
+        {
+          "label": "٩١",
+          "page_id": 685,
+          "level": 1
+        },
+        {
+          "label": "١١١",
+          "page_id": 690,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الإسراء",
+      "page_id": 693,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 693,
+          "level": 1
+        },
+        {
+          "label": "٢٣",
+          "page_id": 699,
+          "level": 1
+        },
+        {
+          "label": "٤٩",
+          "page_id": 705,
+          "level": 1
+        },
+        {
+          "label": "٧٠",
+          "page_id": 711,
+          "level": 1
+        },
+        {
+          "label": "٩٠",
+          "page_id": 716,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الكهف",
+      "page_id": 721,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 721,
+          "level": 1
+        },
+        {
+          "label": "٢٧",
+          "page_id": 728,
+          "level": 1
+        },
+        {
+          "label": "٥٤",
+          "page_id": 734,
+          "level": 1
+        },
+        {
+          "label": "٨٣",
+          "page_id": 741,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "مريم",
+      "page_id": 746,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 746,
+          "level": 1
+        },
+        {
+          "label": "٤١",
+          "page_id": 752,
+          "level": 1
+        },
+        {
+          "label": "٦٦",
+          "page_id": 757,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "طه",
+      "page_id": 762,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 762,
+          "level": 1
+        },
+        {
+          "label": "٤١",
+          "page_id": 768,
+          "level": 1
+        },
+        {
+          "label": "٧٧",
+          "page_id": 774,
+          "level": 1
+        },
+        {
+          "label": "٩٩",
+          "page_id": 778,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الأنبياء",
+      "page_id": 784,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 784,
+          "level": 1
+        },
+        {
+          "label": "٢٥",
+          "page_id": 789,
+          "level": 1
+        },
+        {
+          "label": "٥١",
+          "page_id": 794,
+          "level": 1
+        },
+        {
+          "label": "٨٣",
+          "page_id": 799,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الحج",
+      "page_id": 806,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 806,
+          "level": 1
+        },
+        {
+          "label": "١٩",
+          "page_id": 812,
+          "level": 1
+        },
+        {
+          "label": "٣٨",
+          "page_id": 817,
+          "level": 1
+        },
+        {
+          "label": "٦٣",
+          "page_id": 822,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "المؤمنون",
+      "page_id": 826,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 826,
+          "level": 1
+        },
+        {
+          "label": "٢٣",
+          "page_id": 830,
+          "level": 1
+        },
+        {
+          "label": "٥٣",
+          "page_id": 834,
+          "level": 1
+        },
+        {
+          "label": "٧٥",
+          "page_id": 838,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "النور",
+      "page_id": 845,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 845,
+          "level": 1
+        },
+        {
+          "label": "٢١",
+          "page_id": 852,
+          "level": 1
+        },
+        {
+          "label": "٣٥",
+          "page_id": 859,
+          "level": 1
+        },
+        {
+          "label": "٥٣",
+          "page_id": 866,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الفرقان",
+      "page_id": 872,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 872,
+          "level": 1
+        },
+        {
+          "label": "٢١",
+          "page_id": 877,
+          "level": 1
+        },
+        {
+          "label": "٤١",
+          "page_id": 882,
+          "level": 1
+        },
+        {
+          "label": "٦١",
+          "page_id": 887,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الشعراء",
+      "page_id": 891,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 891,
+          "level": 1
+        },
+        {
+          "label": "٥٢",
+          "page_id": 897,
+          "level": 1
+        },
+        {
+          "label": "١٠٥",
+          "page_id": 902,
+          "level": 1
+        },
+        {
+          "label": "١٩٢",
+          "page_id": 909,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "النمل",
+      "page_id": 914,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 914,
+          "level": 1
+        },
+        {
+          "label": "٢٠",
+          "page_id": 919,
+          "level": 1
+        },
+        {
+          "label": "٤٥",
+          "page_id": 924,
+          "level": 1
+        },
+        {
+          "label": "٦٧",
+          "page_id": 929,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "القصص",
+      "page_id": 934,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 934,
+          "level": 1
+        },
+        {
+          "label": "٢٠",
+          "page_id": 940,
+          "level": 1
+        },
+        {
+          "label": "٤٣",
+          "page_id": 945,
+          "level": 1
+        },
+        {
+          "label": "٧١",
+          "page_id": 953,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "العنكبوت",
+      "page_id": 958,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 958,
+          "level": 1
+        },
+        {
+          "label": "٢٨",
+          "page_id": 964,
+          "level": 1
+        },
+        {
+          "label": "٤٦",
+          "page_id": 969,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الروم",
+      "page_id": 975,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 975,
+          "level": 1
+        },
+        {
+          "label": "٢٠",
+          "page_id": 979,
+          "level": 1
+        },
+        {
+          "label": "٤١",
+          "page_id": 984,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "لقمان",
+      "page_id": 988,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 988,
+          "level": 1
+        },
+        {
+          "label": "١٢",
+          "page_id": 992,
+          "level": 1
+        },
+        {
+          "label": "٢٠",
+          "page_id": 996,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "السجدة",
+      "page_id": 1001,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1001,
+          "level": 1
+        },
+        {
+          "label": "١٨",
+          "page_id": 1005,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الأحزاب",
+      "page_id": 1009,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1009,
+          "level": 1
+        },
+        {
+          "label": "٢١",
+          "page_id": 1016,
+          "level": 1
+        },
+        {
+          "label": "٣٦",
+          "page_id": 1023,
+          "level": 1
+        },
+        {
+          "label": "٥٣",
+          "page_id": 1030,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "سبأ",
+      "page_id": 1038,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1038,
+          "level": 1
+        },
+        {
+          "label": "١٥",
+          "page_id": 1043,
+          "level": 1
+        },
+        {
+          "label": "٣٤",
+          "page_id": 1050,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "فاطر",
+      "page_id": 1056,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1056,
+          "level": 1
+        },
+        {
+          "label": "١٥",
+          "page_id": 1063,
+          "level": 1
+        },
+        {
+          "label": "٣٢",
+          "page_id": 1068,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "يس",
+      "page_id": 1074,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1074,
+          "level": 1
+        },
+        {
+          "label": "٣٣",
+          "page_id": 1081,
+          "level": 1
+        },
+        {
+          "label": "٥٩",
+          "page_id": 1089,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الصافات",
+      "page_id": 1095,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1095,
+          "level": 1
+        },
+        {
+          "label": "٦٢",
+          "page_id": 1103,
+          "level": 1
+        },
+        {
+          "label": "١١٤",
+          "page_id": 1109,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "ص",
+      "page_id": 1115,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1115,
+          "level": 1
+        },
+        {
+          "label": "٢٧",
+          "page_id": 1122,
+          "level": 1
+        },
+        {
+          "label": "٥٥",
+          "page_id": 1127,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الزمر",
+      "page_id": 1132,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1132,
+          "level": 1
+        },
+        {
+          "label": "٢١",
+          "page_id": 1139,
+          "level": 1
+        },
+        {
+          "label": "٣٢",
+          "page_id": 1143,
+          "level": 1
+        },
+        {
+          "label": "٥٣",
+          "page_id": 1148,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "غافر",
+      "page_id": 1154,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1154,
+          "level": 1
+        },
+        {
+          "label": "٢٣",
+          "page_id": 1159,
+          "level": 1
+        },
+        {
+          "label": "٤٧",
+          "page_id": 1165,
+          "level": 1
+        },
+        {
+          "label": "٦٧",
+          "page_id": 1169,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "فصلت",
+      "page_id": 1173,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1173,
+          "level": 1
+        },
+        {
+          "label": "١٩",
+          "page_id": 1181,
+          "level": 1
+        },
+        {
+          "label": "٣٩",
+          "page_id": 1185,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الشورى",
+      "page_id": 1191,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1191,
+          "level": 1
+        },
+        {
+          "label": "١٩",
+          "page_id": 1196,
+          "level": 1
+        },
+        {
+          "label": "٣٢",
+          "page_id": 1201,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الزخرف",
+      "page_id": 1207,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1207,
+          "level": 1
+        },
+        {
+          "label": "٢٦",
+          "page_id": 1212,
+          "level": 1
+        },
+        {
+          "label": "٤٦",
+          "page_id": 1216,
+          "level": 1
+        },
+        {
+          "label": "٦٥",
+          "page_id": 1220,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الدخان",
+      "page_id": 1225,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1225,
+          "level": 1
+        },
+        {
+          "label": "٣٠",
+          "page_id": 1230,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الجاثية",
+      "page_id": 1235,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1235,
+          "level": 1
+        },
+        {
+          "label": "٢١",
+          "page_id": 1239,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الأحقاف",
+      "page_id": 1244,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1244,
+          "level": 1
+        },
+        {
+          "label": "٢٠",
+          "page_id": 1250,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "محمد",
+      "page_id": 1256,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1256,
+          "level": 1
+        },
+        {
+          "label": "٢٠",
+          "page_id": 1262,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الفتح",
+      "page_id": 1267,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1267,
+          "level": 1
+        },
+        {
+          "label": "١٨",
+          "page_id": 1272,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الحجرات",
+      "page_id": 1279,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1279,
+          "level": 1
+        },
+        {
+          "label": "١٣",
+          "page_id": 1284,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "ق",
+      "page_id": 1288,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1288,
+          "level": 1
+        },
+        {
+          "label": "٢٣",
+          "page_id": 1292,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الذاريات",
+      "page_id": 1296,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1296,
+          "level": 1
+        },
+        {
+          "label": "٣٨",
+          "page_id": 1301,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الطور",
+      "page_id": 1307,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1307,
+          "level": 1
+        },
+        {
+          "label": "٢٩",
+          "page_id": 1312,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "النجم",
+      "page_id": 1317,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1317,
+          "level": 1
+        },
+        {
+          "label": "٣٣",
+          "page_id": 1323,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "القمر",
+      "page_id": 1328,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1328,
+          "level": 1
+        },
+        {
+          "label": "٣٣",
+          "page_id": 1334,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الرحمن",
+      "page_id": 1338,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1338,
+          "level": 1
+        },
+        {
+          "label": "٤٦",
+          "page_id": 1344,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الواقعة",
+      "page_id": 1349,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1349,
+          "level": 1
+        },
+        {
+          "label": "٥٧",
+          "page_id": 1356,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الحديد",
+      "page_id": 1363,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1363,
+          "level": 1
+        },
+        {
+          "label": "١٦",
+          "page_id": 1369,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "المجادلة",
+      "page_id": 1376,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1376,
+          "level": 1
+        },
+        {
+          "label": "١١",
+          "page_id": 1382,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الحشر",
+      "page_id": 1389,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1389,
+          "level": 1
+        },
+        {
+          "label": "١١",
+          "page_id": 1395,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الممتحنة",
+      "page_id": 1400,
+      "level": 0
+    },
+    {
+      "label": "الصف",
+      "page_id": 1407,
+      "level": 0,
+      "children": [
+        {
+          "label": "١",
+          "page_id": 1407,
+          "level": 1
+        },
+        {
+          "label": "١٠",
+          "page_id": 1411,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "الجمعة",
+      "page_id": 1414,
+      "level": 0
+    },
+    {
+      "label": "المنافقون",
+      "page_id": 1419,
+      "level": 0
+    },
+    {
+      "label": "التغابن",
+      "page_id": 1424,
+      "level": 0
+    },
+    {
+      "label": "الطلاق",
+      "page_id": 1429,
+      "level": 0
+    },
+    {
+      "label": "التحريم",
+      "page_id": 1436,
+      "level": 0
+    },
+    {
+      "label": "الملك",
+      "page_id": 1444,
+      "level": 0
+    },
+    {
+      "label": "القلم",
+      "page_id": 1452,
+      "level": 0
+    },
+    {
+      "label": "الحاقة",
+      "page_id": 1461,
+      "level": 0
+    },
+    {
+      "label": "المعارج",
+      "page_id": 1468,
+      "level": 0
+    },
+    {
+      "label": "نوح",
+      "page_id": 1475,
+      "level": 0
+    },
+    {
+      "label": "الجن",
+      "page_id": 1481,
+      "level": 0
+    },
+    {
+      "label": "المزمل",
+      "page_id": 1487,
+      "level": 0
+    },
+    {
+      "label": "المدثر",
+      "page_id": 1494,
+      "level": 0
+    },
+    {
+      "label": "القيامة",
+      "page_id": 1504,
+      "level": 0
+    },
+    {
+      "label": "الإنسان",
+      "page_id": 1510,
+      "level": 0
+    },
+    {
+      "label": "المرسلات",
+      "page_id": 1518,
+      "level": 0
+    },
+    {
+      "label": "النبأ",
+      "page_id": 1524,
+      "level": 0
+    },
+    {
+      "label": "النازعات",
+      "page_id": 1529,
+      "level": 0
+    },
+    {
+      "label": "عبس",
+      "page_id": 1534,
+      "level": 0
+    },
+    {
+      "label": "التكوير",
+      "page_id": 1538,
+      "level": 0
+    },
+    {
+      "label": "الانفطار",
+      "page_id": 1541,
+      "level": 0
+    },
+    {
+      "label": "المطففين",
+      "page_id": 1543,
+      "level": 0
+    },
+    {
+      "label": "الانشقاق",
+      "page_id": 1547,
+      "level": 0
+    },
+    {
+      "label": "البروج",
+      "page_id": 1550,
+      "level": 0
+    },
+    {
+      "label": "الطارق",
+      "page_id": 1553,
+      "level": 0
+    },
+    {
+      "label": "الأعلى",
+      "page_id": 1555,
+      "level": 0
+    },
+    {
+      "label": "الغاشية",
+      "page_id": 1558,
+      "level": 0
+    },
+    {
+      "label": "الفجر",
+      "page_id": 1562,
+      "level": 0
+    },
+    {
+      "label": "البلد",
+      "page_id": 1566,
+      "level": 0
+    },
+    {
+      "label": "الشمس",
+      "page_id": 1569,
+      "level": 0
+    },
+    {
+      "label": "الليل",
+      "page_id": 1572,
+      "level": 0
+    },
+    {
+      "label": "الضحى",
+      "page_id": 1575,
+      "level": 0
+    },
+    {
+      "label": "الشرح",
+      "page_id": 1578,
+      "level": 0
+    },
+    {
+      "label": "التين",
+      "page_id": 1581,
+      "level": 0
+    },
+    {
+      "label": "العلق",
+      "page_id": 1584,
+      "level": 0
+    },
+    {
+      "label": "القدر",
+      "page_id": 1587,
+      "level": 0
+    },
+    {
+      "label": "البينة",
+      "page_id": 1589,
+      "level": 0
+    },
+    {
+      "label": "الزلزلة",
+      "page_id": 1592,
+      "level": 0
+    },
+    {
+      "label": "العاديات",
+      "page_id": 1595,
+      "level": 0
+    },
+    {
+      "label": "القارعة",
+      "page_id": 1597,
+      "level": 0
+    },
+    {
+      "label": "التكاثر",
+      "page_id": 1600,
+      "level": 0
+    },
+    {
+      "label": "العصر",
+      "page_id": 1603,
+      "level": 0
+    },
+    {
+      "label": "الهمزة",
+      "page_id": 1605,
+      "level": 0
+    },
+    {
+      "label": "الفيل",
+      "page_id": 1607,
+      "level": 0
+    },
+    {
+      "label": "قريش",
+      "page_id": 1609,
+      "level": 0
+    },
+    {
+      "label": "الماعون",
+      "page_id": 1611,
+      "level": 0
+    },
+    {
+      "label": "الكوثر",
+      "page_id": 1614,
+      "level": 0
+    },
+    {
+      "label": "الكافرون",
+      "page_id": 1616,
+      "level": 0
+    },
+    {
+      "label": "النصر",
+      "page_id": 1618,
+      "level": 0
+    },
+    {
+      "label": "المسد",
+      "page_id": 1620,
+      "level": 0
+    },
+    {
+      "label": "الإخلاص",
+      "page_id": 1623,
+      "level": 0
+    },
+    {
+      "label": "الفلق",
+      "page_id": 1626,
+      "level": 0
+    },
+    {
+      "label": "الناس",
+      "page_id": 1628,
+      "level": 0
+    }
+  ],
+  "toc_flat": [
+    {
+      "label": "الفاتحة",
+      "page_id": 1,
+      "level": 0
+    },
+    {
+      "label": "البقرة",
+      "page_id": 6,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 6,
+      "level": 1
+    },
+    {
+      "label": "٦",
+      "page_id": 9,
+      "level": 1
+    },
+    {
+      "label": "٨",
+      "page_id": 10,
+      "level": 1
+    },
+    {
+      "label": "٢١",
+      "page_id": 16,
+      "level": 1
+    },
+    {
+      "label": "٢٦",
+      "page_id": 20,
+      "level": 1
+    },
+    {
+      "label": "٣٠",
+      "page_id": 24,
+      "level": 1
+    },
+    {
+      "label": "٣٤",
+      "page_id": 27,
+      "level": 1
+    },
+    {
+      "label": "٤٠",
+      "page_id": 30,
+      "level": 1
+    },
+    {
+      "label": "٤٤",
+      "page_id": 33,
+      "level": 1
+    },
+    {
+      "label": "٤٩",
+      "page_id": 36,
+      "level": 1
+    },
+    {
+      "label": "٥٥",
+      "page_id": 39,
+      "level": 1
+    },
+    {
+      "label": "٦٠",
+      "page_id": 42,
+      "level": 1
+    },
+    {
+      "label": "٦٣",
+      "page_id": 46,
+      "level": 1
+    },
+    {
+      "label": "٦٧",
+      "page_id": 48,
+      "level": 1
+    },
+    {
+      "label": "٧٥",
+      "page_id": 52,
+      "level": 1
+    },
+    {
+      "label": "٨٣",
+      "page_id": 56,
+      "level": 1
+    },
+    {
+      "label": "٨٧",
+      "page_id": 59,
+      "level": 1
+    },
+    {
+      "label": "٩٣",
+      "page_id": 62,
+      "level": 1
+    },
+    {
+      "label": "٩٩",
+      "page_id": 65,
+      "level": 1
+    },
+    {
+      "label": "١٠٤",
+      "page_id": 68,
+      "level": 1
+    },
+    {
+      "label": "١١١",
+      "page_id": 71,
+      "level": 1
+    },
+    {
+      "label": "١١٦",
+      "page_id": 74,
+      "level": 1
+    },
+    {
+      "label": "١٢٤",
+      "page_id": 77,
+      "level": 1
+    },
+    {
+      "label": "١٣٠",
+      "page_id": 81,
+      "level": 1
+    },
+    {
+      "label": "١٣٥",
+      "page_id": 83,
+      "level": 1
+    },
+    {
+      "label": "١٤٢",
+      "page_id": 86,
+      "level": 1
+    },
+    {
+      "label": "١٤٥",
+      "page_id": 89,
+      "level": 1
+    },
+    {
+      "label": "١٥١",
+      "page_id": 92,
+      "level": 1
+    },
+    {
+      "label": "١٥٨",
+      "page_id": 95,
+      "level": 1
+    },
+    {
+      "label": "١٦٣",
+      "page_id": 98,
+      "level": 1
+    },
+    {
+      "label": "١٦٨",
+      "page_id": 102,
+      "level": 1
+    },
+    {
+      "label": "١٧٧",
+      "page_id": 106,
+      "level": 1
+    },
+    {
+      "label": "١٨٣",
+      "page_id": 110,
+      "level": 1
+    },
+    {
+      "label": "١٨٨",
+      "page_id": 115,
+      "level": 1
+    },
+    {
+      "label": "١٩٦",
+      "page_id": 119,
+      "level": 1
+    },
+    {
+      "label": "٢٠٤",
+      "page_id": 123,
+      "level": 1
+    },
+    {
+      "label": "٢١٣",
+      "page_id": 127,
+      "level": 1
+    },
+    {
+      "label": "٢١٩",
+      "page_id": 131,
+      "level": 1
+    },
+    {
+      "label": "٢٢٦",
+      "page_id": 136,
+      "level": 1
+    },
+    {
+      "label": "٢٣١",
+      "page_id": 140,
+      "level": 1
+    },
+    {
+      "label": "٢٣٣",
+      "page_id": 143,
+      "level": 1
+    },
+    {
+      "label": "٢٣٨",
+      "page_id": 147,
+      "level": 1
+    },
+    {
+      "label": "٢٤٣",
+      "page_id": 149,
+      "level": 1
+    },
+    {
+      "label": "٢٥٣",
+      "page_id": 154,
+      "level": 1
+    },
+    {
+      "label": "٢٥٥",
+      "page_id": 157,
+      "level": 1
+    },
+    {
+      "label": "٢٥٨",
+      "page_id": 160,
+      "level": 1
+    },
+    {
+      "label": "٢٦١",
+      "page_id": 163,
+      "level": 1
+    },
+    {
+      "label": "٢٧٠",
+      "page_id": 167,
+      "level": 1
+    },
+    {
+      "label": "٢٧٥",
+      "page_id": 170,
+      "level": 1
+    },
+    {
+      "label": "٢٨٢",
+      "page_id": 174,
+      "level": 1
+    },
+    {
+      "label": "٢٨٤",
+      "page_id": 177,
+      "level": 1
+    },
+    {
+      "label": "آل عمران",
+      "page_id": 180,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 180,
+      "level": 1
+    },
+    {
+      "label": "١٠",
+      "page_id": 184,
+      "level": 1
+    },
+    {
+      "label": "١٨",
+      "page_id": 188,
+      "level": 1
+    },
+    {
+      "label": "٢٦",
+      "page_id": 192,
+      "level": 1
+    },
+    {
+      "label": "٣٣",
+      "page_id": 196,
+      "level": 1
+    },
+    {
+      "label": "٤٢",
+      "page_id": 199,
+      "level": 1
+    },
+    {
+      "label": "٥٢",
+      "page_id": 202,
+      "level": 1
+    },
+    {
+      "label": "٦٤",
+      "page_id": 205,
+      "level": 1
+    },
+    {
+      "label": "٧٥",
+      "page_id": 209,
+      "level": 1
+    },
+    {
+      "label": "٨١",
+      "page_id": 212,
+      "level": 1
+    },
+    {
+      "label": "٩٢",
+      "page_id": 215,
+      "level": 1
+    },
+    {
+      "label": "١٠٤",
+      "page_id": 219,
+      "level": 1
+    },
+    {
+      "label": "١١٣",
+      "page_id": 222,
+      "level": 1
+    },
+    {
+      "label": "١٢١",
+      "page_id": 225,
+      "level": 1
+    },
+    {
+      "label": "١٣٣",
+      "page_id": 228,
+      "level": 1
+    },
+    {
+      "label": "١٤٩",
+      "page_id": 232,
+      "level": 1
+    },
+    {
+      "label": "١٥٩",
+      "page_id": 237,
+      "level": 1
+    },
+    {
+      "label": "١٦٩",
+      "page_id": 240,
+      "level": 1
+    },
+    {
+      "label": "١٨١",
+      "page_id": 244,
+      "level": 1
+    },
+    {
+      "label": "١٩٠",
+      "page_id": 248,
+      "level": 1
+    },
+    {
+      "label": "النساء",
+      "page_id": 252,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 252,
+      "level": 1
+    },
+    {
+      "label": "١١",
+      "page_id": 256,
+      "level": 1
+    },
+    {
+      "label": "١٥",
+      "page_id": 259,
+      "level": 1
+    },
+    {
+      "label": "٢٢",
+      "page_id": 262,
+      "level": 1
+    },
+    {
+      "label": "٣٢",
+      "page_id": 267,
+      "level": 1
+    },
+    {
+      "label": "٤٤",
+      "page_id": 273,
+      "level": 1
+    },
+    {
+      "label": "٥٨",
+      "page_id": 277,
+      "level": 1
+    },
+    {
+      "label": "٧١",
+      "page_id": 282,
+      "level": 1
+    },
+    {
+      "label": "٨٨",
+      "page_id": 287,
+      "level": 1
+    },
+    {
+      "label": "٩٧",
+      "page_id": 292,
+      "level": 1
+    },
+    {
+      "label": "١١٤",
+      "page_id": 297,
+      "level": 1
+    },
+    {
+      "label": "١٣٥",
+      "page_id": 302,
+      "level": 1
+    },
+    {
+      "label": "١٤٨",
+      "page_id": 307,
+      "level": 1
+    },
+    {
+      "label": "١٦٣",
+      "page_id": 312,
+      "level": 1
+    },
+    {
+      "label": "المائدة",
+      "page_id": 316,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 316,
+      "level": 1
+    },
+    {
+      "label": "١١",
+      "page_id": 322,
+      "level": 1
+    },
+    {
+      "label": "٢٧",
+      "page_id": 327,
+      "level": 1
+    },
+    {
+      "label": "٤١",
+      "page_id": 333,
+      "level": 1
+    },
+    {
+      "label": "٥١",
+      "page_id": 339,
+      "level": 1
+    },
+    {
+      "label": "٦٧",
+      "page_id": 345,
+      "level": 1
+    },
+    {
+      "label": "٨٢",
+      "page_id": 350,
+      "level": 1
+    },
+    {
+      "label": "٩٧",
+      "page_id": 356,
+      "level": 1
+    },
+    {
+      "label": "١٠٩",
+      "page_id": 361,
+      "level": 1
+    },
+    {
+      "label": "الأنعام",
+      "page_id": 365,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 365,
+      "level": 1
+    },
+    {
+      "label": "١٩",
+      "page_id": 370,
+      "level": 1
+    },
+    {
+      "label": "٣٦",
+      "page_id": 375,
+      "level": 1
+    },
+    {
+      "label": "٥٩",
+      "page_id": 381,
+      "level": 1
+    },
+    {
+      "label": "٧٤",
+      "page_id": 386,
+      "level": 1
+    },
+    {
+      "label": "٩٥",
+      "page_id": 393,
+      "level": 1
+    },
+    {
+      "label": "١١١",
+      "page_id": 398,
+      "level": 1
+    },
+    {
+      "label": "١٢٨",
+      "page_id": 404,
+      "level": 1
+    },
+    {
+      "label": "١٤١",
+      "page_id": 409,
+      "level": 1
+    },
+    {
+      "label": "١٥١",
+      "page_id": 413,
+      "level": 1
+    },
+    {
+      "label": "الأعراف",
+      "page_id": 418,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 418,
+      "level": 1
+    },
+    {
+      "label": "٣١",
+      "page_id": 425,
+      "level": 1
+    },
+    {
+      "label": "٥٢",
+      "page_id": 431,
+      "level": 1
+    },
+    {
+      "label": "٧٣",
+      "page_id": 436,
+      "level": 1
+    },
+    {
+      "label": "٩٤",
+      "page_id": 441,
+      "level": 1
+    },
+    {
+      "label": "١٣٠",
+      "page_id": 447,
+      "level": 1
+    },
+    {
+      "label": "١٥٠",
+      "page_id": 453,
+      "level": 1
+    },
+    {
+      "label": "١٧١",
+      "page_id": 460,
+      "level": 1
+    },
+    {
+      "label": "١٨٧",
+      "page_id": 464,
+      "level": 1
+    },
+    {
+      "label": "الأنفال",
+      "page_id": 469,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 469,
+      "level": 1
+    },
+    {
+      "label": "٢٤",
+      "page_id": 476,
+      "level": 1
+    },
+    {
+      "label": "٤١",
+      "page_id": 481,
+      "level": 1
+    },
+    {
+      "label": "٦١",
+      "page_id": 487,
+      "level": 1
+    },
+    {
+      "label": "التوبة",
+      "page_id": 493,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 493,
+      "level": 1
+    },
+    {
+      "label": "٢٣",
+      "page_id": 500,
+      "level": 1
+    },
+    {
+      "label": "٣٤",
+      "page_id": 505,
+      "level": 1
+    },
+    {
+      "label": "٤٦",
+      "page_id": 511,
+      "level": 1
+    },
+    {
+      "label": "٦١",
+      "page_id": 517,
+      "level": 1
+    },
+    {
+      "label": "٧٥",
+      "page_id": 522,
+      "level": 1
+    },
+    {
+      "label": "٩٤",
+      "page_id": 528,
+      "level": 1
+    },
+    {
+      "label": "١١١",
+      "page_id": 534,
+      "level": 1
+    },
+    {
+      "label": "يونس",
+      "page_id": 540,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 540,
+      "level": 1
+    },
+    {
+      "label": "٢١",
+      "page_id": 546,
+      "level": 1
+    },
+    {
+      "label": "٤٠",
+      "page_id": 552,
+      "level": 1
+    },
+    {
+      "label": "٧١",
+      "page_id": 558,
+      "level": 1
+    },
+    {
+      "label": "٩٠",
+      "page_id": 562,
+      "level": 1
+    },
+    {
+      "label": "هود",
+      "page_id": 567,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 567,
+      "level": 1
+    },
+    {
+      "label": "٢٥",
+      "page_id": 572,
+      "level": 1
+    },
+    {
+      "label": "٥٠",
+      "page_id": 579,
+      "level": 1
+    },
+    {
+      "label": "٧٤",
+      "page_id": 584,
+      "level": 1
+    },
+    {
+      "label": "١٠٠",
+      "page_id": 591,
+      "level": 1
+    },
+    {
+      "label": "يوسف",
+      "page_id": 596,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 596,
+      "level": 1
+    },
+    {
+      "label": "٢٣",
+      "page_id": 601,
+      "level": 1
+    },
+    {
+      "label": "٤٣",
+      "page_id": 609,
+      "level": 1
+    },
+    {
+      "label": "٦٩",
+      "page_id": 615,
+      "level": 1
+    },
+    {
+      "label": "٩٤",
+      "page_id": 620,
+      "level": 1
+    },
+    {
+      "label": "الرعد",
+      "page_id": 625,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 625,
+      "level": 1
+    },
+    {
+      "label": "١٧",
+      "page_id": 631,
+      "level": 1
+    },
+    {
+      "label": "٣٥",
+      "page_id": 638,
+      "level": 1
+    },
+    {
+      "label": "إبراهيم",
+      "page_id": 641,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 641,
+      "level": 1
+    },
+    {
+      "label": "١٨",
+      "page_id": 645,
+      "level": 1
+    },
+    {
+      "label": "٣٥",
+      "page_id": 650,
+      "level": 1
+    },
+    {
+      "label": "الحجر",
+      "page_id": 654,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 654,
+      "level": 1
+    },
+    {
+      "label": "٤٥",
+      "page_id": 659,
+      "level": 1
+    },
+    {
+      "label": "النحل",
+      "page_id": 665,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 665,
+      "level": 1
+    },
+    {
+      "label": "٣٠",
+      "page_id": 671,
+      "level": 1
+    },
+    {
+      "label": "٥١",
+      "page_id": 675,
+      "level": 1
+    },
+    {
+      "label": "٧٥",
+      "page_id": 680,
+      "level": 1
+    },
+    {
+      "label": "٩١",
+      "page_id": 685,
+      "level": 1
+    },
+    {
+      "label": "١١١",
+      "page_id": 690,
+      "level": 1
+    },
+    {
+      "label": "الإسراء",
+      "page_id": 693,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 693,
+      "level": 1
+    },
+    {
+      "label": "٢٣",
+      "page_id": 699,
+      "level": 1
+    },
+    {
+      "label": "٤٩",
+      "page_id": 705,
+      "level": 1
+    },
+    {
+      "label": "٧٠",
+      "page_id": 711,
+      "level": 1
+    },
+    {
+      "label": "٩٠",
+      "page_id": 716,
+      "level": 1
+    },
+    {
+      "label": "الكهف",
+      "page_id": 721,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 721,
+      "level": 1
+    },
+    {
+      "label": "٢٧",
+      "page_id": 728,
+      "level": 1
+    },
+    {
+      "label": "٥٤",
+      "page_id": 734,
+      "level": 1
+    },
+    {
+      "label": "٨٣",
+      "page_id": 741,
+      "level": 1
+    },
+    {
+      "label": "مريم",
+      "page_id": 746,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 746,
+      "level": 1
+    },
+    {
+      "label": "٤١",
+      "page_id": 752,
+      "level": 1
+    },
+    {
+      "label": "٦٦",
+      "page_id": 757,
+      "level": 1
+    },
+    {
+      "label": "طه",
+      "page_id": 762,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 762,
+      "level": 1
+    },
+    {
+      "label": "٤١",
+      "page_id": 768,
+      "level": 1
+    },
+    {
+      "label": "٧٧",
+      "page_id": 774,
+      "level": 1
+    },
+    {
+      "label": "٩٩",
+      "page_id": 778,
+      "level": 1
+    },
+    {
+      "label": "الأنبياء",
+      "page_id": 784,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 784,
+      "level": 1
+    },
+    {
+      "label": "٢٥",
+      "page_id": 789,
+      "level": 1
+    },
+    {
+      "label": "٥١",
+      "page_id": 794,
+      "level": 1
+    },
+    {
+      "label": "٨٣",
+      "page_id": 799,
+      "level": 1
+    },
+    {
+      "label": "الحج",
+      "page_id": 806,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 806,
+      "level": 1
+    },
+    {
+      "label": "١٩",
+      "page_id": 812,
+      "level": 1
+    },
+    {
+      "label": "٣٨",
+      "page_id": 817,
+      "level": 1
+    },
+    {
+      "label": "٦٣",
+      "page_id": 822,
+      "level": 1
+    },
+    {
+      "label": "المؤمنون",
+      "page_id": 826,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 826,
+      "level": 1
+    },
+    {
+      "label": "٢٣",
+      "page_id": 830,
+      "level": 1
+    },
+    {
+      "label": "٥٣",
+      "page_id": 834,
+      "level": 1
+    },
+    {
+      "label": "٧٥",
+      "page_id": 838,
+      "level": 1
+    },
+    {
+      "label": "النور",
+      "page_id": 845,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 845,
+      "level": 1
+    },
+    {
+      "label": "٢١",
+      "page_id": 852,
+      "level": 1
+    },
+    {
+      "label": "٣٥",
+      "page_id": 859,
+      "level": 1
+    },
+    {
+      "label": "٥٣",
+      "page_id": 866,
+      "level": 1
+    },
+    {
+      "label": "الفرقان",
+      "page_id": 872,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 872,
+      "level": 1
+    },
+    {
+      "label": "٢١",
+      "page_id": 877,
+      "level": 1
+    },
+    {
+      "label": "٤١",
+      "page_id": 882,
+      "level": 1
+    },
+    {
+      "label": "٦١",
+      "page_id": 887,
+      "level": 1
+    },
+    {
+      "label": "الشعراء",
+      "page_id": 891,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 891,
+      "level": 1
+    },
+    {
+      "label": "٥٢",
+      "page_id": 897,
+      "level": 1
+    },
+    {
+      "label": "١٠٥",
+      "page_id": 902,
+      "level": 1
+    },
+    {
+      "label": "١٩٢",
+      "page_id": 909,
+      "level": 1
+    },
+    {
+      "label": "النمل",
+      "page_id": 914,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 914,
+      "level": 1
+    },
+    {
+      "label": "٢٠",
+      "page_id": 919,
+      "level": 1
+    },
+    {
+      "label": "٤٥",
+      "page_id": 924,
+      "level": 1
+    },
+    {
+      "label": "٦٧",
+      "page_id": 929,
+      "level": 1
+    },
+    {
+      "label": "القصص",
+      "page_id": 934,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 934,
+      "level": 1
+    },
+    {
+      "label": "٢٠",
+      "page_id": 940,
+      "level": 1
+    },
+    {
+      "label": "٤٣",
+      "page_id": 945,
+      "level": 1
+    },
+    {
+      "label": "٧١",
+      "page_id": 953,
+      "level": 1
+    },
+    {
+      "label": "العنكبوت",
+      "page_id": 958,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 958,
+      "level": 1
+    },
+    {
+      "label": "٢٨",
+      "page_id": 964,
+      "level": 1
+    },
+    {
+      "label": "٤٦",
+      "page_id": 969,
+      "level": 1
+    },
+    {
+      "label": "الروم",
+      "page_id": 975,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 975,
+      "level": 1
+    },
+    {
+      "label": "٢٠",
+      "page_id": 979,
+      "level": 1
+    },
+    {
+      "label": "٤١",
+      "page_id": 984,
+      "level": 1
+    },
+    {
+      "label": "لقمان",
+      "page_id": 988,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 988,
+      "level": 1
+    },
+    {
+      "label": "١٢",
+      "page_id": 992,
+      "level": 1
+    },
+    {
+      "label": "٢٠",
+      "page_id": 996,
+      "level": 1
+    },
+    {
+      "label": "السجدة",
+      "page_id": 1001,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1001,
+      "level": 1
+    },
+    {
+      "label": "١٨",
+      "page_id": 1005,
+      "level": 1
+    },
+    {
+      "label": "الأحزاب",
+      "page_id": 1009,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1009,
+      "level": 1
+    },
+    {
+      "label": "٢١",
+      "page_id": 1016,
+      "level": 1
+    },
+    {
+      "label": "٣٦",
+      "page_id": 1023,
+      "level": 1
+    },
+    {
+      "label": "٥٣",
+      "page_id": 1030,
+      "level": 1
+    },
+    {
+      "label": "سبأ",
+      "page_id": 1038,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1038,
+      "level": 1
+    },
+    {
+      "label": "١٥",
+      "page_id": 1043,
+      "level": 1
+    },
+    {
+      "label": "٣٤",
+      "page_id": 1050,
+      "level": 1
+    },
+    {
+      "label": "فاطر",
+      "page_id": 1056,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1056,
+      "level": 1
+    },
+    {
+      "label": "١٥",
+      "page_id": 1063,
+      "level": 1
+    },
+    {
+      "label": "٣٢",
+      "page_id": 1068,
+      "level": 1
+    },
+    {
+      "label": "يس",
+      "page_id": 1074,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1074,
+      "level": 1
+    },
+    {
+      "label": "٣٣",
+      "page_id": 1081,
+      "level": 1
+    },
+    {
+      "label": "٥٩",
+      "page_id": 1089,
+      "level": 1
+    },
+    {
+      "label": "الصافات",
+      "page_id": 1095,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1095,
+      "level": 1
+    },
+    {
+      "label": "٦٢",
+      "page_id": 1103,
+      "level": 1
+    },
+    {
+      "label": "١١٤",
+      "page_id": 1109,
+      "level": 1
+    },
+    {
+      "label": "ص",
+      "page_id": 1115,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1115,
+      "level": 1
+    },
+    {
+      "label": "٢٧",
+      "page_id": 1122,
+      "level": 1
+    },
+    {
+      "label": "٥٥",
+      "page_id": 1127,
+      "level": 1
+    },
+    {
+      "label": "الزمر",
+      "page_id": 1132,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1132,
+      "level": 1
+    },
+    {
+      "label": "٢١",
+      "page_id": 1139,
+      "level": 1
+    },
+    {
+      "label": "٣٢",
+      "page_id": 1143,
+      "level": 1
+    },
+    {
+      "label": "٥٣",
+      "page_id": 1148,
+      "level": 1
+    },
+    {
+      "label": "غافر",
+      "page_id": 1154,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1154,
+      "level": 1
+    },
+    {
+      "label": "٢٣",
+      "page_id": 1159,
+      "level": 1
+    },
+    {
+      "label": "٤٧",
+      "page_id": 1165,
+      "level": 1
+    },
+    {
+      "label": "٦٧",
+      "page_id": 1169,
+      "level": 1
+    },
+    {
+      "label": "فصلت",
+      "page_id": 1173,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1173,
+      "level": 1
+    },
+    {
+      "label": "١٩",
+      "page_id": 1181,
+      "level": 1
+    },
+    {
+      "label": "٣٩",
+      "page_id": 1185,
+      "level": 1
+    },
+    {
+      "label": "الشورى",
+      "page_id": 1191,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1191,
+      "level": 1
+    },
+    {
+      "label": "١٩",
+      "page_id": 1196,
+      "level": 1
+    },
+    {
+      "label": "٣٢",
+      "page_id": 1201,
+      "level": 1
+    },
+    {
+      "label": "الزخرف",
+      "page_id": 1207,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1207,
+      "level": 1
+    },
+    {
+      "label": "٢٦",
+      "page_id": 1212,
+      "level": 1
+    },
+    {
+      "label": "٤٦",
+      "page_id": 1216,
+      "level": 1
+    },
+    {
+      "label": "٦٥",
+      "page_id": 1220,
+      "level": 1
+    },
+    {
+      "label": "الدخان",
+      "page_id": 1225,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1225,
+      "level": 1
+    },
+    {
+      "label": "٣٠",
+      "page_id": 1230,
+      "level": 1
+    },
+    {
+      "label": "الجاثية",
+      "page_id": 1235,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1235,
+      "level": 1
+    },
+    {
+      "label": "٢١",
+      "page_id": 1239,
+      "level": 1
+    },
+    {
+      "label": "الأحقاف",
+      "page_id": 1244,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1244,
+      "level": 1
+    },
+    {
+      "label": "٢٠",
+      "page_id": 1250,
+      "level": 1
+    },
+    {
+      "label": "محمد",
+      "page_id": 1256,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1256,
+      "level": 1
+    },
+    {
+      "label": "٢٠",
+      "page_id": 1262,
+      "level": 1
+    },
+    {
+      "label": "الفتح",
+      "page_id": 1267,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1267,
+      "level": 1
+    },
+    {
+      "label": "١٨",
+      "page_id": 1272,
+      "level": 1
+    },
+    {
+      "label": "الحجرات",
+      "page_id": 1279,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1279,
+      "level": 1
+    },
+    {
+      "label": "١٣",
+      "page_id": 1284,
+      "level": 1
+    },
+    {
+      "label": "ق",
+      "page_id": 1288,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1288,
+      "level": 1
+    },
+    {
+      "label": "٢٣",
+      "page_id": 1292,
+      "level": 1
+    },
+    {
+      "label": "الذاريات",
+      "page_id": 1296,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1296,
+      "level": 1
+    },
+    {
+      "label": "٣٨",
+      "page_id": 1301,
+      "level": 1
+    },
+    {
+      "label": "الطور",
+      "page_id": 1307,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1307,
+      "level": 1
+    },
+    {
+      "label": "٢٩",
+      "page_id": 1312,
+      "level": 1
+    },
+    {
+      "label": "النجم",
+      "page_id": 1317,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1317,
+      "level": 1
+    },
+    {
+      "label": "٣٣",
+      "page_id": 1323,
+      "level": 1
+    },
+    {
+      "label": "القمر",
+      "page_id": 1328,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1328,
+      "level": 1
+    },
+    {
+      "label": "٣٣",
+      "page_id": 1334,
+      "level": 1
+    },
+    {
+      "label": "الرحمن",
+      "page_id": 1338,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1338,
+      "level": 1
+    },
+    {
+      "label": "٤٦",
+      "page_id": 1344,
+      "level": 1
+    },
+    {
+      "label": "الواقعة",
+      "page_id": 1349,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1349,
+      "level": 1
+    },
+    {
+      "label": "٥٧",
+      "page_id": 1356,
+      "level": 1
+    },
+    {
+      "label": "الحديد",
+      "page_id": 1363,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1363,
+      "level": 1
+    },
+    {
+      "label": "١٦",
+      "page_id": 1369,
+      "level": 1
+    },
+    {
+      "label": "المجادلة",
+      "page_id": 1376,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1376,
+      "level": 1
+    },
+    {
+      "label": "١١",
+      "page_id": 1382,
+      "level": 1
+    },
+    {
+      "label": "الحشر",
+      "page_id": 1389,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1389,
+      "level": 1
+    },
+    {
+      "label": "١١",
+      "page_id": 1395,
+      "level": 1
+    },
+    {
+      "label": "الممتحنة",
+      "page_id": 1400,
+      "level": 0
+    },
+    {
+      "label": "الصف",
+      "page_id": 1407,
+      "level": 0
+    },
+    {
+      "label": "١",
+      "page_id": 1407,
+      "level": 1
+    },
+    {
+      "label": "١٠",
+      "page_id": 1411,
+      "level": 1
+    },
+    {
+      "label": "الجمعة",
+      "page_id": 1414,
+      "level": 0
+    },
+    {
+      "label": "المنافقون",
+      "page_id": 1419,
+      "level": 0
+    },
+    {
+      "label": "التغابن",
+      "page_id": 1424,
+      "level": 0
+    },
+    {
+      "label": "الطلاق",
+      "page_id": 1429,
+      "level": 0
+    },
+    {
+      "label": "التحريم",
+      "page_id": 1436,
+      "level": 0
+    },
+    {
+      "label": "الملك",
+      "page_id": 1444,
+      "level": 0
+    },
+    {
+      "label": "القلم",
+      "page_id": 1452,
+      "level": 0
+    },
+    {
+      "label": "الحاقة",
+      "page_id": 1461,
+      "level": 0
+    },
+    {
+      "label": "المعارج",
+      "page_id": 1468,
+      "level": 0
+    },
+    {
+      "label": "نوح",
+      "page_id": 1475,
+      "level": 0
+    },
+    {
+      "label": "الجن",
+      "page_id": 1481,
+      "level": 0
+    },
+    {
+      "label": "المزمل",
+      "page_id": 1487,
+      "level": 0
+    },
+    {
+      "label": "المدثر",
+      "page_id": 1494,
+      "level": 0
+    },
+    {
+      "label": "القيامة",
+      "page_id": 1504,
+      "level": 0
+    },
+    {
+      "label": "الإنسان",
+      "page_id": 1510,
+      "level": 0
+    },
+    {
+      "label": "المرسلات",
+      "page_id": 1518,
+      "level": 0
+    },
+    {
+      "label": "النبأ",
+      "page_id": 1524,
+      "level": 0
+    },
+    {
+      "label": "النازعات",
+      "page_id": 1529,
+      "level": 0
+    },
+    {
+      "label": "عبس",
+      "page_id": 1534,
+      "level": 0
+    },
+    {
+      "label": "التكوير",
+      "page_id": 1538,
+      "level": 0
+    },
+    {
+      "label": "الانفطار",
+      "page_id": 1541,
+      "level": 0
+    },
+    {
+      "label": "المطففين",
+      "page_id": 1543,
+      "level": 0
+    },
+    {
+      "label": "الانشقاق",
+      "page_id": 1547,
+      "level": 0
+    },
+    {
+      "label": "البروج",
+      "page_id": 1550,
+      "level": 0
+    },
+    {
+      "label": "الطارق",
+      "page_id": 1553,
+      "level": 0
+    },
+    {
+      "label": "الأعلى",
+      "page_id": 1555,
+      "level": 0
+    },
+    {
+      "label": "الغاشية",
+      "page_id": 1558,
+      "level": 0
+    },
+    {
+      "label": "الفجر",
+      "page_id": 1562,
+      "level": 0
+    },
+    {
+      "label": "البلد",
+      "page_id": 1566,
+      "level": 0
+    },
+    {
+      "label": "الشمس",
+      "page_id": 1569,
+      "level": 0
+    },
+    {
+      "label": "الليل",
+      "page_id": 1572,
+      "level": 0
+    },
+    {
+      "label": "الضحى",
+      "page_id": 1575,
+      "level": 0
+    },
+    {
+      "label": "الشرح",
+      "page_id": 1578,
+      "level": 0
+    },
+    {
+      "label": "التين",
+      "page_id": 1581,
+      "level": 0
+    },
+    {
+      "label": "العلق",
+      "page_id": 1584,
+      "level": 0
+    },
+    {
+      "label": "القدر",
+      "page_id": 1587,
+      "level": 0
+    },
+    {
+      "label": "البينة",
+      "page_id": 1589,
+      "level": 0
+    },
+    {
+      "label": "الزلزلة",
+      "page_id": 1592,
+      "level": 0
+    },
+    {
+      "label": "العاديات",
+      "page_id": 1595,
+      "level": 0
+    },
+    {
+      "label": "القارعة",
+      "page_id": 1597,
+      "level": 0
+    },
+    {
+      "label": "التكاثر",
+      "page_id": 1600,
+      "level": 0
+    },
+    {
+      "label": "العصر",
+      "page_id": 1603,
+      "level": 0
+    },
+    {
+      "label": "الهمزة",
+      "page_id": 1605,
+      "level": 0
+    },
+    {
+      "label": "الفيل",
+      "page_id": 1607,
+      "level": 0
+    },
+    {
+      "label": "قريش",
+      "page_id": 1609,
+      "level": 0
+    },
+    {
+      "label": "الماعون",
+      "page_id": 1611,
+      "level": 0
+    },
+    {
+      "label": "الكوثر",
+      "page_id": 1614,
+      "level": 0
+    },
+    {
+      "label": "الكافرون",
+      "page_id": 1616,
+      "level": 0
+    },
+    {
+      "label": "النصر",
+      "page_id": 1618,
+      "level": 0
+    },
+    {
+      "label": "المسد",
+      "page_id": 1620,
+      "level": 0
+    },
+    {
+      "label": "الإخلاص",
+      "page_id": 1623,
+      "level": 0
+    },
+    {
+      "label": "الفلق",
+      "page_id": 1626,
+      "level": 0
+    },
+    {
+      "label": "الناس",
+      "page_id": 1628,
+      "level": 0
+    }
+  ],
+  "toc_summary": {
+    "total_entries": 398,
+    "top_level_entries": 114,
+    "max_depth": 2
+  }
+}

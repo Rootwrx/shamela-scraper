@@ -1,0 +1,8 @@
+first book page
+https://shamela.ws/book/12762
+
+
+<body class="enable-animation" style="padding-top: 0px;"> <!-- wrapper --><div id="wrapper"> <section class="padding-top-20"><div class="container"> <div class="row"> <div class="col-md-8 col-md-offset-2"> <div class="nass margin-top-10" data-page-id="" data-page-num="0"> <div class="text-left"> <a class="btn" id="bu_showSrch"><span class="fa fa-search text-gray"></span></a> <a class="btn" id="bu_share"><span class="fa fa-share-alt text-gray"></span></a> <div id="cont_srchBook" class="width-300 softhide margin-bottom-20"> <div class="input-group"> <input type="text" class="form-control" id="fld_srchBook" placeholder="بحث في هذا الكتاب"> <span class="input-group-btn"> <button class="btn btn-primary" id="bu_srchBook" type="button" data-book_id="12762"> بحــث </button> </span> </div> </div> </div> <h3 class="text-center">بطاقة الكتاب وفهرس الموضوعات</h3>الكتاب: سلسلة الأحاديث الضعيفة والموضوعة وأثرها السيئ في الأمة<br>المؤلف: محمد ناصر الدين الألباني [ت ١٤٢٠ هـ]<br>الناشر: مكتبة المعارف، الرياض - الممكلة العربية السعودية<br>الطبعة: الأولى للطبعة الجديدة (١٤١٢ هـ = ١٩٩٢ م) - (١٤٢٥ هـ)<br>عدد الأجزاء: ١٤<br>[ترقيم الكتاب موافق للمطبوع] <div style="margin-top: 20px; margin-bottom: 20px;">صفحة المؤلف: [<a href="https://shamela.ws/author/414">ناصر الدين الألباني</a>]</div> <div class="betaka-index"> <h4>فهرس الموضوعات</h4> <ul>
+  <li><a href="https://shamela.ws/book/12762/1411">٩٩٩</a></li><li><a href="https://shamela.ws/book/12762/1412">١٠٠٠</a></li></ul>
+ </div> </div> </div> </div></div></section>       <!-- /FOOTER --></div>
+</body>

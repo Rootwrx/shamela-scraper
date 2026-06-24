@@ -218,7 +218,7 @@ def fetch_book_meta(session: requests.Session, book_id: int) -> dict:
     url = f"{BASE}/book/{book_id}"
     resp = session.get(url, timeout=15)
     resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "html.parser")
+    soup = BeautifulSoup(resp.text, "lxml")
 
     meta = {"book_id": book_id, "url": url}
 
@@ -280,7 +280,7 @@ def fetch_book_meta(session: requests.Session, book_id: int) -> dict:
         try:
             r2 = session.get(first_content_url, timeout=15)
             r2.raise_for_status()
-            soup2 = BeautifulSoup(r2.text, "html.parser")
+            soup2 = BeautifulSoup(r2.text, "lxml")
             snav = soup2.find("div", class_="s-nav")
             if snav:
                 snav_ul = snav.find("ul", recursive=False)
@@ -313,7 +313,7 @@ def fetch_author_info(session: requests.Session, author_id: int) -> dict:
     try:
         resp = session.get(url, timeout=15)
         resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "html.parser")
+        soup = BeautifulSoup(resp.text, "lxml")
         info = {"author_id": author_id, "url": url}
 
         # bio: find h4 "تعريف بالمؤلف" then grab the next div.alert sibling
@@ -397,7 +397,7 @@ def fetch_category_books(session: requests.Session, category_id: int, delay: flo
             print(f"\n[!] Error fetching category {category_id} (page {page}): {e}")
             break
 
-        soup = BeautifulSoup(resp.text, "html.parser")
+        soup = BeautifulSoup(resp.text, "lxml")
 
         if name is None:
             h1 = soup.find("h1")
@@ -492,7 +492,7 @@ def _html_esc(t: str) -> str:
 
 def _strip_tags(html_str: str) -> str:
     """Plain text from an HTML fragment (for the flat .text field)."""
-    return BeautifulSoup(html_str, "html.parser").get_text(" ", strip=True)
+    return BeautifulSoup(html_str, "lxml").get_text(" ", strip=True)
 
 
 def parse_page_html(html: str) -> list[dict]:
@@ -501,7 +501,7 @@ def parse_page_html(html: str) -> list[dict]:
     Each paragraph is {"type": "text"|"hamesh", "lines": [html_fragment, ...]}
     Lines are HTML fragments preserving span.cX color and <br> splits.
     """
-    soup = BeautifulSoup(html, "html.parser")
+    soup = BeautifulSoup(html, "lxml")
     results = []
 
     for div in soup.find_all("div", {"data-page-id": True}):
@@ -562,7 +562,7 @@ def parse_page_html(html: str) -> list[dict]:
 
 def get_next_page_id(html: str) -> int | None:
     """Extract next page ID from the 'load next' button."""
-    soup = BeautifulSoup(html, "html.parser")
+    soup = BeautifulSoup(html, "lxml")
     btn = soup.find("button", {"id": "bu_load_next"})
     if btn and btn.get("data-next-id"):
         return int(btn["data-next-id"])
@@ -1152,6 +1152,13 @@ def _e(text: str) -> str:
     """HTML-escape a string."""
     return _html.escape(str(text)) if text else ""
 
+def _truncate(title: str, max_words: int = 5) -> str:
+    """Truncate a title to max_words; if longer keeps first few + '...' + last word."""
+    words = title.split()
+    if len(words) <= max_words:
+        return title
+    return ' '.join(words[:max_words - 1]) + ' … ' + words[-1]
+
 
 
 # NOTE: Visible TOC rendering has been removed per prompt_toc.txt requirements.
@@ -1164,8 +1171,8 @@ def _build_html_css(meta: dict) -> str:
     """Return the full <style> block CSS string (shared by stream and legacy paths)."""
     import datetime as _dt  # noqa: F401 — kept for callers that need it
 
-    font_candidates = ["ScheherazadeNew", "Amiri", "AmiriQuran", "Traditional Arabic", "Arial"]
-    font_stack = ", ".join(f'"{f}"' for f in font_candidates) + ", serif"
+    font_body = '"Scheherazade New", "Noto Naskh Arabic", "Amiri Quran", "Amiri", serif'
+    font_head = '"Noto Kufi Arabic", "Scheherazade New", "Amiri", serif'
 
     toc_flat = meta.get("toc_flat", [])
     max_toc_level = -1
@@ -1182,15 +1189,18 @@ def _build_html_css(meta: dict) -> str:
         )
     toc_bm_css = "\n    ".join(toc_bm_css_parts)
 
-    # Accent palette — warm gold + deep teal
-    GOLD   = "#9a6f1e"
-    GOLD_L = "#c49a3c"   # lighter gold for ornaments
-    TEAL   = "#1a3a4a"   # deep teal for body / headings
-    TEAL_M = "#2a5a72"   # mid teal for sub-headings
-    RUST   = "#8b2e00"   # rust-red for chapter titles
-    INK    = "#0d0d0d"   # near-black body text
+    # Islamic gold palette
+    GOLD       = "#b8860b"
+    GOLD_L     = "#daa520"
+    GOLD_D     = "#6b4f10"
+    TEAL       = "#1a3a4a"
+    RUST       = "#8b2e00"
+    INK        = "#1a1008"
+    CREAM      = "#faf5e6"
+    PARCHMENT  = "#f5edd6"
+    SEPIA      = "#5c3d1a"
+    BROWN      = "#3e2712"
 
-    book_title_escaped = _e(meta.get("title", ""))
 
     css = f"""
     /* ═══════════════════════════════════════════════════════
@@ -1201,55 +1211,49 @@ def _build_html_css(meta: dict) -> str:
     @page front-matter {{
         size: A4;
         margin: 1.6cm 1.8cm 2cm 1.8cm;
+        background: {CREAM};
         @bottom-center {{
             content: counter(page, lower-roman);
-            font-family: {font_stack};
-            font-size: 8pt;
-            color: #aaa;
+            font-family: {font_body};
+            font-size: 9pt;
+            color: {GOLD_L};
         }}
         @top-left  {{ content: none; }}
         @top-right {{ content: none; }}
     }}
 
-    /* Book-text pages: page number top-left AND bottom-centre */
+    /* Book-text pages */
     @page book-text {{
         size: A4;
         margin: 1.6cm 1.8cm 2cm 1.8cm;
+        background: {CREAM};
 
-        /* ── top-left: page number ── */
         @top-left {{
             content: counter(page);
-            font-family: {font_stack};
-            font-size: 8.5pt;
-            font-weight: 700;
-            color: {GOLD};
-            border-bottom: 1.5pt solid {GOLD};
-            padding-bottom: 2pt;
+            font-family: {font_body};
+            font-size: 12pt;
+            font-weight: 800;
+            color: {RUST};
+            padding-left: 1em;
         }}
 
-        /* ── top-right: book title ── */
-        @top-right {{
-            content: "{book_title_escaped}";
-            font-family: {font_stack};
-            font-size: 7.5pt;
-            color: #888;
-        }}
-
-        /* ── top-center: running chapter name ── */
         @top-center {{
             content: string(chapter-title);
-            font-family: {font_stack};
-            font-size: 7.5pt;
-            color: {TEAL_M};
-            font-style: italic;
+            font-family: {font_head};
+            font-size: 10pt;
+            font-weight: 600;
+            color: {TEAL};
+            text-align: center;
         }}
 
-        /* ── bottom-centre: page number (classic position) ── */
+        @top-right {{ content: none; }}
+
         @bottom-center {{
             content: "— " counter(page) " —";
-            font-family: {font_stack};
-            font-size: 8.5pt;
-            color: #777;
+            font-family: {font_body};
+            font-size: 11pt;
+            font-weight: 700;
+            color: {RUST};
         }}
         @bottom-left  {{ content: none; }}
         @bottom-right {{ content: none; }}
@@ -1258,13 +1262,16 @@ def _build_html_css(meta: dict) -> str:
     /* Bare @page default (cover) */
     @page {{
         size: A4;
-        margin: 1.6cm 1.8cm 2cm 1.8cm;
+        margin: 1.5cm;
+        background: linear-gradient(180deg, {PARCHMENT} 0%, {CREAM} 25%, #fffdf5 50%, {CREAM} 75%, {PARCHMENT} 100%);
     }}
     @page :first {{
         @top-left   {{ content: none; }}
         @top-right  {{ content: none; }}
         @top-center {{ content: none; }}
         @bottom-center {{ content: none; }}
+        @bottom-left  {{ content: none; }}
+        @bottom-right {{ content: none; }}
     }}
 
     /* ═══════════════════════════════════════════════════════
@@ -1273,65 +1280,153 @@ def _build_html_css(meta: dict) -> str:
     * {{ box-sizing: border-box; }}
 
     body {{
-        font-family: {font_stack};
-        font-size: 12.5pt;        /* slightly smaller → more words per page */
-        font-weight: 500;         /* medium-bold — heavier than normal */
-        line-height: 1.85;        /* tight but legible for Arabic */
+        font-family: {font_body};
+        font-size: 14pt;
+        font-weight: 700;
+        line-height: 1.9;
         direction: rtl;
         text-align: justify;
         text-justify: kashida;
         color: {INK};
-        background: white;
+        background: {CREAM};
     }}
 
     /* ═══════════════════════════════════════════════════════
-       COVER PAGE
+       COVER PAGE — ornate multi-layer design
        ═══════════════════════════════════════════════════════ */
     .cover {{
         page-break-after: always;
         text-align: center;
-        padding: 3.5cm 1.2cm 1.5cm;
-        border: 5px double {GOLD};
-        margin: 0.3cm;
-        background: linear-gradient(180deg, #fdfaf4 0%, #fff 60%);
+        padding: 0;
+        margin: 0;
+        background: linear-gradient(180deg, {PARCHMENT} 0%, {CREAM} 25%, #fffdf5 50%, {CREAM} 75%, {PARCHMENT} 100%);
+        height: 26.7cm;
     }}
-    .cover-ornament {{
-        font-size: 18pt;
+
+    .cover-frame-outer {{
+        border: 5px double {SEPIA};
+        margin: 0.2cm;
+        padding: 0.6cm;
+        height: 25.7cm;
+        background: linear-gradient(180deg, #fdf8ee 0%, #fffef8 40%, #fdf8ee 100%);
+    }}
+
+    .cover-frame-inner {{
+        border: 2.5px solid {GOLD_L};
+        padding: 1.2cm 1.8cm 1cm;
+        height: 23.7cm;
+        position: relative;
+        background: linear-gradient(180deg, #fffcf2 0%, #fff 50%, #fef9ed 100%);
+    }}
+
+    .cover-corner {{
+        position: absolute;
+        width: 2.5cm;
+        height: 2.5cm;
+        border-color: {GOLD_D};
+        border-style: solid;
+        border-width: 0;
+        font-size: 22pt;
+        color: {GOLD};
+        line-height: 1;
+    }}
+    .cover-corner-tl {{
+        top: 0.2cm; right: 0.2cm;
+        border-top-width: 3px;
+        border-right-width: 3px;
+        padding-top: 0.15cm;
+        padding-right: 0.15cm;
+        text-align: right;
+    }}
+    .cover-corner-tr {{
+        top: 0.2cm; left: 0.2cm;
+        border-top-width: 3px;
+        border-left-width: 3px;
+        padding-top: 0.15cm;
+        padding-left: 0.15cm;
+        text-align: left;
+    }}
+    .cover-corner-bl {{
+        bottom: 0.2cm; right: 0.2cm;
+        border-bottom-width: 3px;
+        border-right-width: 3px;
+        padding-bottom: 0.15cm;
+        padding-right: 0.15cm;
+        text-align: right;
+    }}
+    .cover-corner-br {{
+        bottom: 0.2cm; left: 0.2cm;
+        border-bottom-width: 3px;
+        border-left-width: 3px;
+        padding-bottom: 0.15cm;
+        padding-left: 0.15cm;
+        text-align: left;
+    }}
+
+    .cover-ornament-top {{
+        font-size: 14pt;
+        color: {GOLD};
+        letter-spacing: 0.5em;
+        margin: 0.4em 0 0.2em;
+    }}
+    .cover-bismillah {{
+        font-size: 16pt;
+        color: {BROWN};
+        font-weight: 700;
+        margin: 0.6em 0 0.3em;
+        letter-spacing: 0.08em;
+    }}
+
+    .cover-divider {{
+        margin: 0.5em auto;
+        width: 70%;
         color: {GOLD_L};
-        margin-bottom: 0.4em;
-        letter-spacing: 0.4em;
+        font-size: 10pt;
+        letter-spacing: 0.3em;
+        border: none;
+        overflow: hidden;
     }}
+
     .cover h1 {{
-        font-size: 28pt;          /* BIG title on cover */
-        color: {TEAL};
-        margin: 0.5em 0;
-        line-height: 1.5;
+        font-size: 26pt;
+        color: {SEPIA};
+        margin: 0.4em 0.2em;
+        line-height: 1.6;
         font-weight: 900;
-        letter-spacing: 0.02em;
+        letter-spacing: 0.03em;
     }}
+
     .cover .meta-table {{
-        margin: 1.2em auto;
+        margin: 1em auto;
         border-collapse: collapse;
-        width: 82%;
-        font-size: 10.5pt;
-        color: #333;
+        width: 75%;
+        font-size: 11pt;
+        color: {BROWN};
     }}
     .cover .meta-table td {{
-        padding: 0.35em 0.7em;
+        padding: 0.4em 0.8em;
         text-align: right;
-        border-bottom: 1px dotted #ddd;
+        border-bottom: 1px dotted {GOLD_L};
         vertical-align: top;
     }}
     .cover .meta-label {{
-        color: {GOLD};
+        color: {SEPIA};
         font-weight: 800;
         white-space: nowrap;
-        width: 26%;
+        width: 28%;
     }}
+
+    .cover-ornament-bottom {{
+        font-size: 12pt;
+        color: {GOLD};
+        letter-spacing: 0.5em;
+        margin: 0.6em 0 0.3em;
+    }}
+
     .cover .source {{
-        font-size: 7.5pt;
-        color: #bbb;
-        margin-top: 1.5em;
+        font-size: 8pt;
+        color: #999;
+        margin-top: 1.2em;
     }}
 
     /* ═══════════════════════════════════════════════════════
@@ -1369,6 +1464,7 @@ def _build_html_css(meta: dict) -> str:
 
     /* Section-level h2 — bold teal with gold underline */
     h2 {{
+        font-family: {font_head};
         font-size: 20pt;
         font-weight: 900;
         color: {TEAL};
@@ -1380,13 +1476,13 @@ def _build_html_css(meta: dict) -> str:
         bookmark-label: content();
         prince-bookmark-level: 1;
         prince-bookmark-label: content();
-        string-set: chapter-title content();
     }}
 
     h3 {{
+        font-family: {font_head};
         font-size: 15pt;
         font-weight: 800;
-        color: {TEAL_M};
+        color: {TEAL};
         border-right: 5px solid {GOLD};
         padding-right: 0.5em;
         margin-top: 1em;
@@ -1395,6 +1491,7 @@ def _build_html_css(meta: dict) -> str:
 
     /* Inline chapter heading from scraped <p class="b"> or <p class="head"> */
     .chapter-heading {{
+        font-family: {font_head};
         font-size: 16pt;
         font-weight: 900;
         color: {RUST};
@@ -1454,10 +1551,10 @@ def _build_html_css(meta: dict) -> str:
        FOOTNOTES (hamesh)
        ═══════════════════════════════════════════════════════ */
     .hamesh {{
-        border-top: 1px solid #ccc;
+        border-top: 1px solid {GOLD_L};
         margin-top: 0.8em;
         padding-top: 0.3em;
-        font-size: 9pt;
+        font-size: 10pt;
         font-weight: 400;
         color: #555;
         line-height: 1.6;
@@ -1471,15 +1568,25 @@ def _build_html_css(meta: dict) -> str:
 
 
 def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
-                      vol_num_ref: list) -> tuple[str, int]:
+                      vol_num_ref: list, page_breadcrumb: str = "") -> tuple[str, int]:
     """
     Return (html_fragment, updated_vol_num) for a single page dict.
     vol_num_ref is a 1-element list used as a mutable int reference.
+    page_breadcrumb: full TOC breadcrumb path for this page (e.g. "سورة الفاتحة < الآيات 1-5").
     """
     parts = []
     i_dummy = None  # volume divider needs "not first page" guard handled by caller
     pid = page.get("page_id")
     vol_num = vol_num_ref[0]
+
+    # ── Inject breadcrumb anchor (sets chapter-title for running header) ───
+    if page_breadcrumb:
+        parts.append(
+            f'<div class="bm-setter" '
+            f'style="height:0;overflow:hidden;line-height:0;font-size:1pt;'
+            f'string-set:chapter-title content()">'
+            f'{_e(page_breadcrumb)}</div>\n'
+        )
 
     # ── Inject TOC bookmark anchors for this page ──────────────────────
     if pid and pid in toc_by_page:
@@ -1556,10 +1663,35 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
             f'<style>{css}</style></head><body>\n'
         )
 
-        # ── COVER ──────────────────────────────────────────────────────
+        # Hidden span: sets chapter-title to truncated book title (fallback)
+        book_title = meta.get("title", "كتاب")
+        fh.write(f'<span style="display:none; string-set: chapter-title content()">'
+                 f'{_e(_truncate(book_title))}</span>\n')
+
+        # ── COVER (ornate multi-layer design) ─────────────────────────
         fh.write('<div class="cover">\n')
-        fh.write('<div class="cover-ornament">❦ ❦ ❦</div>\n')
+        fh.write('<div class="cover-frame-outer">\n')
+        fh.write('<div class="cover-frame-inner">\n')
+
+        # Corner ornaments
+        fh.write('<div class="cover-corner cover-corner-tl">&#10022;</div>\n')
+        fh.write('<div class="cover-corner cover-corner-tr">&#10022;</div>\n')
+        fh.write('<div class="cover-corner cover-corner-bl">&#10022;</div>\n')
+        fh.write('<div class="cover-corner cover-corner-br">&#10022;</div>\n')
+
+        # Top ornament row
+        fh.write('<div class="cover-ornament-top">&#10022; &#10023; &#10022; &#10023; &#10022;</div>\n')
+
+        # Bismillah
+        fh.write('<div class="cover-bismillah">بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ</div>\n')
+
+        # Decorative divider
+        fh.write('<div class="cover-divider">&#9473;&#9473;&#9473; &#10022; &#9473;&#9473;&#9473;</div>\n')
+
+        # Book title
         fh.write(f'<h1>{_e(meta.get("title", "كتاب"))}</h1>\n')
+
+        # Meta info table
         rows = []
         for label, key in [("المؤلف", "author"), ("الناشر", "publisher"),
                             ("الطبعة", "edition"), ("عدد الأجزاء", "volumes")]:
@@ -1568,9 +1700,17 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
                              f'<td>{_e(meta[key])}</td></tr>')
         if rows:
             fh.write(f'<table class="meta-table">{"".join(rows)}</table>\n')
+
+        # Bottom ornament
+        fh.write('<div class="cover-ornament-bottom">&#10022; &#10023; &#10022; &#10023; &#10022;</div>\n')
+
+        # Source
         fh.write(f'<p class="source">المصدر: {_e(meta.get("url",""))} | '
                  f'تاريخ التحميل: {scraped_date}</p>\n')
-        fh.write('</div>\n')
+
+        fh.write('</div><!-- cover-frame-inner -->\n')
+        fh.write('</div><!-- cover-frame-outer -->\n')
+        fh.write('</div><!-- cover -->\n')
 
         # ── AUTHOR INFO ────────────────────────────────────────────────
         if author_info and not author_info.get("error"):
@@ -1594,8 +1734,41 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
         buf: list[str] = []
         first_page = True
 
+        # Prepare breadcrumb tracking: sorted TOC entries by page_id
+        sorted_toc = sorted(
+            [e for e in toc_flat if e.get("page_id") is not None],
+            key=lambda e: (e["page_id"], e.get("level", 0))
+        )
+        toc_idx = 0
+        breadcrumb_stack: list[tuple[str, int]] = []  # (numbered_label, level)
+        counters = [0] * 20  # counter per level for hierarchical numbering
+
         for page in pages_iter:
             pid = page.get("page_id")
+
+            # Update breadcrumb stack with any TOC entries starting on or before this page
+            if pid is not None:
+                while toc_idx < len(sorted_toc) and sorted_toc[toc_idx]["page_id"] <= pid:
+                    entry = sorted_toc[toc_idx]
+                    level = entry["level"]
+                    # Pop entries at same or deeper level
+                    while breadcrumb_stack and breadcrumb_stack[-1][1] >= level:
+                        breadcrumb_stack.pop()
+                    # Increment counter at this level, reset deeper
+                    counters[level] += 1
+                    for i in range(level + 1, len(counters)):
+                        counters[i] = 0
+                    # Build number
+                    number = ".".join(str(counters[i]) for i in range(level + 1))
+                    label = entry["label"]
+                    if label:
+                        breadcrumb_stack.append((f"{number} {label}", level))
+                    toc_idx += 1
+
+            # Build breadcrumb path for this page (most specific first, RTL-friendly)
+            page_breadcrumb = " > ".join(
+                label for label, _ in reversed(breadcrumb_stack) if label
+            ) if breadcrumb_stack else ""
 
             # volume divider
             if pid and pid in vol_boundaries and not first_page:
@@ -1605,7 +1778,8 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
                 buf.append('<div class="section">\n')
                 vol_num[0] += 1
 
-            frag, _ = _render_page_html(page, toc_by_page, vol_boundaries, vol_num)
+            frag, _ = _render_page_html(page, toc_by_page, vol_boundaries, vol_num,
+                                         page_breadcrumb)
             buf.append(frag)
             first_page = False
 
