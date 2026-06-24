@@ -1627,8 +1627,14 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
 
     parts.append('<div class="page-entry"><div class="page-text">')
 
+    def _plain_text(html_frag: str) -> str:
+        """Strip HTML tags from a fragment for text comparison."""
+        import re as _re
+        return _re.sub(r'<[^>]+>', '', html_frag)
+
     def _should_skip(text: str) -> bool:
-        stripped = text.strip("[]（）()「」【】《》〈〉").strip()
+        plain = _plain_text(text).strip()
+        stripped = plain.strip("[]（）()「」【】《》〈〉").strip()
         return stripped in toc_new_labels or (all_toc_labels and stripped in all_toc_labels)
 
     paras = page.get("paragraphs")
