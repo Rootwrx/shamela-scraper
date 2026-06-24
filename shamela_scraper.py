@@ -1228,22 +1228,16 @@ def _build_html_css(meta: dict) -> str:
         margin: 1.6cm 1.8cm 2cm 1.8cm;
         background: {CREAM};
 
-        @top-left {{
-            content: counter(page);
-            font-family: {font_body};
-            font-size: 12pt;
-            font-weight: 800;
-            color: {RUST};
-            padding-left: 1em;
-        }}
+        @top-left {{ content: none; }}
 
         @top-center {{
             content: string(chapter-title);
             font-family: {font_head};
-            font-size: 10pt;
+            font-size: 9pt;
             font-weight: 600;
             color: {TEAL};
             text-align: center;
+            white-space: nowrap;
         }}
 
         @top-right {{ content: none; }}
@@ -1522,19 +1516,19 @@ def _build_html_css(meta: dict) -> str:
        ═══════════════════════════════════════════════════════ */
     .toc-numbered-heading {{
         font-family: {font_body};
-        font-size: 12pt;
+        font-size: 14pt;
         font-weight: 700;
         color: {TEAL};
         margin: 0.6em 0 0.1em 0;
         padding: 0;
     }}
     .toc-numbered-heading.toc-nh-0 {{
-        font-size: 14pt;
-        color: {BROWN};
+        font-size: 20pt;
+        color: {GOLD_L};
     }}
     .toc-numbered-heading.toc-nh-1 {{
-        font-size: 13pt;
-        color: {SEPIA};
+        font-size: 17pt;
+        color: {RUST};
     }}
 
     /* ═══════════════════════════════════════════════════════
@@ -1645,8 +1639,9 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
                 for line in para["lines"]:
                     if line.strip():
                         text = line.strip()
-                        if text in toc_new_labels:
-                            continue  # replaced by numbered heading above
+                        stripped = text.strip("[]").strip()
+                        if stripped in toc_new_labels:
+                            continue  # replaced by numbered heading
                         parts.append(f'<p class="chapter-heading">{text}</p>')
             else:
                 for line in para["lines"]:
