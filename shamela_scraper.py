@@ -1864,8 +1864,13 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
                         page_toc_new.append((label, level, number))
                     toc_idx += 1
 
-            # Build current subtitle (just label) and its number
-            if breadcrumb_stack:
+            # Build current subtitle(s) and number(s) for this page
+            if page_toc_new:
+                labels = [label for label, _, _ in page_toc_new]
+                numbers = [num for _, _, num in page_toc_new]
+                page_breadcrumb = " • ".join(labels)
+                page_toc_number = f"{numbers[0]}-{numbers[-1]}" if len(numbers) > 1 else numbers[0]
+            elif breadcrumb_stack:
                 page_toc_number = breadcrumb_stack[-1][0]
                 page_breadcrumb = breadcrumb_stack[-1][1]
             else:
