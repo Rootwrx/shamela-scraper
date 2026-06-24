@@ -1630,9 +1630,25 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
                 )
 
     # ── Inject visible numbered headings for new TOC entries ────────────
-    toc_new_labels = set()
+    def _plain_text(html_frag: str) -> str:
+        """Strip HTML tags from a fragment for text comparison."""
+        import re as _re
+        return _re.sub(r'<[^>]+>', '', html_frag)
+
+    # Only inject for TOC entries that have matching [...] bracket headings on this page
+    page_bracket_texts: set = set()
+    if paras:
+        for para in paras:
+            for line in para.get("lines", []):
+                plain = _plain_text(line).strip()
+                if plain.startswith("[") and plain.endswith("]"):
+                    page_bracket_texts.add(
+                        plain.strip("[]（）()「」【】《》〈〉").strip()
+                    )
+
+    toc_new_labels: set = set()
     for label, level, number in (page_toc_new or []):
-        if label:
+        if label and label.strip() in page_bracket_texts:
             stripped_label = label.strip()
             toc_new_labels.add(stripped_label)
             parts.append(
@@ -1642,13 +1658,10 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
 
     parts.append('<div class="page-entry"><div class="page-text">')
 
-    def _plain_text(html_frag: str) -> str:
-        """Strip HTML tags from a fragment for text comparison."""
-        import re as _re
-        return _re.sub(r'<[^>]+>', '', html_frag)
-
     def _should_skip(text: str) -> bool:
         plain = _plain_text(text).strip()
+        if not (plain.startswith("[") and plain.endswith("]")):
+            return False  # only suppress bracket-style headings
         stripped = plain.strip("[]（）()「」【】《》〈〉").strip()
         return stripped in toc_new_labels or (all_toc_labels and stripped in all_toc_labels)
 
