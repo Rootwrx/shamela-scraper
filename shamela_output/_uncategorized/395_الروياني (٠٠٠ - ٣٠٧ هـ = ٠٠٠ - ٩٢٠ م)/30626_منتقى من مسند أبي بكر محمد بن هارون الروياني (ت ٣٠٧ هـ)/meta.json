@@ -1,0 +1,618 @@
+{
+  "book_id": 30626,
+  "url": "https://shamela.ws/book/30626",
+  "title": "منتقى من مسند أبي بكر محمد بن هارون الروياني (ت ٣٠٧ هـ)",
+  "publisher": "دار الأمل، الإسكندرية - مصر",
+  "edition": "الثانية، ١٤٤٤ هـ - ٢٠٢٢ م",
+  "author_url": "https://shamela.ws/author/395",
+  "author_id": "395",
+  "toc": [
+    {
+      "label": "مقذدمة التحقيق",
+      "page_id": 1,
+      "level": 0,
+      "children": [
+        {
+          "label": "مقدمة الطبعة الثانية",
+          "page_id": 2,
+          "level": 1
+        },
+        {
+          "label": "مقدمة الطبعة الأولى",
+          "page_id": 4,
+          "level": 1,
+          "children": [
+            {
+              "label": "منهجي في تحقيقه",
+              "page_id": 6,
+              "level": 2
+            },
+            {
+              "label": "ترجمة صاحب المسند محمد بن هارون الروياني",
+              "page_id": 8,
+              "level": 2,
+              "children": [
+                {
+                  "label": "اسمه",
+                  "page_id": 8,
+                  "level": 3
+                },
+                {
+                  "label": "مولده",
+                  "page_id": 8,
+                  "level": 3
+                },
+                {
+                  "label": "رحلته في طلب العلم",
+                  "page_id": 9,
+                  "level": 3
+                },
+                {
+                  "label": "ثناء العلماء عليه",
+                  "page_id": 9,
+                  "level": 3
+                },
+                {
+                  "label": "شيوخه",
+                  "page_id": 10,
+                  "level": 3
+                },
+                {
+                  "label": "تلاميذه",
+                  "page_id": 10,
+                  "level": 3
+                },
+                {
+                  "label": "مؤلفاته",
+                  "page_id": 11,
+                  "level": 3
+                },
+                {
+                  "label": "وفاته",
+                  "page_id": 12,
+                  "level": 3
+                }
+              ]
+            },
+            {
+              "label": "تنبيهان حول مسند الروياني",
+              "page_id": 13,
+              "level": 2
+            },
+            {
+              "label": "ترجمة رواة الجزء",
+              "page_id": 16,
+              "level": 2,
+              "children": [
+                {
+                  "label": "ابن فناكي",
+                  "page_id": 16,
+                  "level": 3
+                },
+                {
+                  "label": "أبو الفضل الرازي",
+                  "page_id": 17,
+                  "level": 3
+                },
+                {
+                  "label": "أبو عبد الله الخلال",
+                  "page_id": 18,
+                  "level": 3
+                },
+                {
+                  "label": "أبو زرعة اللفتواني",
+                  "page_id": 19,
+                  "level": 3
+                }
+              ]
+            },
+            {
+              "label": "ترجمة المنتقي الضياء المقدسي",
+              "page_id": 20,
+              "level": 2,
+              "children": [
+                {
+                  "label": "اسمه",
+                  "page_id": 20,
+                  "level": 3
+                },
+                {
+                  "label": "مولده",
+                  "page_id": 20,
+                  "level": 3
+                },
+                {
+                  "label": "شيوخه",
+                  "page_id": 20,
+                  "level": 3
+                },
+                {
+                  "label": "تلاميذه",
+                  "page_id": 20,
+                  "level": 3
+                },
+                {
+                  "label": "ثناء العلماء عليه",
+                  "page_id": 21,
+                  "level": 3
+                },
+                {
+                  "label": "مصنفاته",
+                  "page_id": 21,
+                  "level": 3
+                },
+                {
+                  "label": "وفاته",
+                  "page_id": 22,
+                  "level": 3
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "من مسند أبي بكر محمد بن هارون الروياني",
+      "page_id": 23,
+      "level": 0,
+      "children": [
+        {
+          "label": "مقدمة",
+          "page_id": 24,
+          "level": 1
+        },
+        {
+          "label": "من مسند صهيب",
+          "page_id": 38,
+          "level": 1
+        },
+        {
+          "label": "من حديث أبي ذر ﵁.",
+          "page_id": 43,
+          "level": 1
+        },
+        {
+          "label": "من حديث زيد بن ثابت",
+          "page_id": 72,
+          "level": 1
+        },
+        {
+          "label": "من حديث أسامة",
+          "page_id": 75,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "label": "ملحق بمرويات من طريق محمد بن هارون الروياني في مسنده",
+      "page_id": 79,
+      "level": 0,
+      "children": [
+        {
+          "label": "من مسند أبي بن كعب",
+          "page_id": 79,
+          "level": 1,
+          "children": [
+            {
+              "label": "أنس بن مالك",
+              "page_id": 79,
+              "level": 2
+            },
+            {
+              "label": "زر بن حبيش",
+              "page_id": 80,
+              "level": 2
+            },
+            {
+              "label": "سليمان بن صرد",
+              "page_id": 80,
+              "level": 2
+            },
+            {
+              "label": "عبادة بن الصامت",
+              "page_id": 81,
+              "level": 2
+            },
+            {
+              "label": "عبد الرحمن بن أبي ليلى",
+              "page_id": 82,
+              "level": 2
+            }
+          ]
+        },
+        {
+          "label": "من مسند حذيفة بن اليمان",
+          "page_id": 84,
+          "level": 1,
+          "children": [
+            {
+              "label": "ربعي بن حراش",
+              "page_id": 84,
+              "level": 2
+            }
+          ]
+        },
+        {
+          "label": "من مسند سمرة بن جندب",
+          "page_id": 85,
+          "level": 1,
+          "children": [
+            {
+              "label": "الحسن البصري",
+              "page_id": 85,
+              "level": 2
+            },
+            {
+              "label": "أبو صالح",
+              "page_id": 86,
+              "level": 2
+            },
+            {
+              "label": "زر بن حبيش",
+              "page_id": 86,
+              "level": 2
+            },
+            {
+              "label": "أبو الأحوص",
+              "page_id": 87,
+              "level": 2
+            }
+          ]
+        },
+        {
+          "label": "من مسند أبي بكرة",
+          "page_id": 88,
+          "level": 1,
+          "children": [
+            {
+              "label": "عبد الرحمن بن أبي بكرة",
+              "page_id": 88,
+              "level": 2
+            }
+          ]
+        },
+        {
+          "label": "من مسند أبو جهم الأنصاري",
+          "page_id": 89,
+          "level": 1,
+          "children": [
+            {
+              "label": "مسلم بن سعيد مولى بني الحضرمي",
+              "page_id": 89,
+              "level": 2
+            }
+          ]
+        },
+        {
+          "label": "من مسند أبي قتادة",
+          "page_id": 90,
+          "level": 1,
+          "children": [
+            {
+              "label": "عبد الله بن أبي قتادة",
+              "page_id": 90,
+              "level": 2
+            }
+          ]
+        },
+        {
+          "label": "من مسند أبي هريرة",
+          "page_id": 91,
+          "level": 1,
+          "children": [
+            {
+              "label": "سعيد بن أبي سعيد المقبري",
+              "page_id": 91,
+              "level": 2
+            }
+          ]
+        },
+        {
+          "label": "من مسند أم أيوب",
+          "page_id": 92,
+          "level": 1,
+          "children": [
+            {
+              "label": "أبو يزيد",
+              "page_id": 92,
+              "level": 2
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "toc_flat": [
+    {
+      "label": "مقذدمة التحقيق",
+      "page_id": 1,
+      "level": 0
+    },
+    {
+      "label": "مقدمة الطبعة الثانية",
+      "page_id": 2,
+      "level": 1
+    },
+    {
+      "label": "مقدمة الطبعة الأولى",
+      "page_id": 4,
+      "level": 1
+    },
+    {
+      "label": "منهجي في تحقيقه",
+      "page_id": 6,
+      "level": 2
+    },
+    {
+      "label": "ترجمة صاحب المسند محمد بن هارون الروياني",
+      "page_id": 8,
+      "level": 2
+    },
+    {
+      "label": "اسمه",
+      "page_id": 8,
+      "level": 3
+    },
+    {
+      "label": "مولده",
+      "page_id": 8,
+      "level": 3
+    },
+    {
+      "label": "رحلته في طلب العلم",
+      "page_id": 9,
+      "level": 3
+    },
+    {
+      "label": "ثناء العلماء عليه",
+      "page_id": 9,
+      "level": 3
+    },
+    {
+      "label": "شيوخه",
+      "page_id": 10,
+      "level": 3
+    },
+    {
+      "label": "تلاميذه",
+      "page_id": 10,
+      "level": 3
+    },
+    {
+      "label": "مؤلفاته",
+      "page_id": 11,
+      "level": 3
+    },
+    {
+      "label": "وفاته",
+      "page_id": 12,
+      "level": 3
+    },
+    {
+      "label": "تنبيهان حول مسند الروياني",
+      "page_id": 13,
+      "level": 2
+    },
+    {
+      "label": "ترجمة رواة الجزء",
+      "page_id": 16,
+      "level": 2
+    },
+    {
+      "label": "ابن فناكي",
+      "page_id": 16,
+      "level": 3
+    },
+    {
+      "label": "أبو الفضل الرازي",
+      "page_id": 17,
+      "level": 3
+    },
+    {
+      "label": "أبو عبد الله الخلال",
+      "page_id": 18,
+      "level": 3
+    },
+    {
+      "label": "أبو زرعة اللفتواني",
+      "page_id": 19,
+      "level": 3
+    },
+    {
+      "label": "ترجمة المنتقي الضياء المقدسي",
+      "page_id": 20,
+      "level": 2
+    },
+    {
+      "label": "اسمه",
+      "page_id": 20,
+      "level": 3
+    },
+    {
+      "label": "مولده",
+      "page_id": 20,
+      "level": 3
+    },
+    {
+      "label": "شيوخه",
+      "page_id": 20,
+      "level": 3
+    },
+    {
+      "label": "تلاميذه",
+      "page_id": 20,
+      "level": 3
+    },
+    {
+      "label": "ثناء العلماء عليه",
+      "page_id": 21,
+      "level": 3
+    },
+    {
+      "label": "مصنفاته",
+      "page_id": 21,
+      "level": 3
+    },
+    {
+      "label": "وفاته",
+      "page_id": 22,
+      "level": 3
+    },
+    {
+      "label": "من مسند أبي بكر محمد بن هارون الروياني",
+      "page_id": 23,
+      "level": 0
+    },
+    {
+      "label": "مقدمة",
+      "page_id": 24,
+      "level": 1
+    },
+    {
+      "label": "من مسند صهيب",
+      "page_id": 38,
+      "level": 1
+    },
+    {
+      "label": "من حديث أبي ذر ﵁.",
+      "page_id": 43,
+      "level": 1
+    },
+    {
+      "label": "من حديث زيد بن ثابت",
+      "page_id": 72,
+      "level": 1
+    },
+    {
+      "label": "من حديث أسامة",
+      "page_id": 75,
+      "level": 1
+    },
+    {
+      "label": "ملحق بمرويات من طريق محمد بن هارون الروياني في مسنده",
+      "page_id": 79,
+      "level": 0
+    },
+    {
+      "label": "من مسند أبي بن كعب",
+      "page_id": 79,
+      "level": 1
+    },
+    {
+      "label": "أنس بن مالك",
+      "page_id": 79,
+      "level": 2
+    },
+    {
+      "label": "زر بن حبيش",
+      "page_id": 80,
+      "level": 2
+    },
+    {
+      "label": "سليمان بن صرد",
+      "page_id": 80,
+      "level": 2
+    },
+    {
+      "label": "عبادة بن الصامت",
+      "page_id": 81,
+      "level": 2
+    },
+    {
+      "label": "عبد الرحمن بن أبي ليلى",
+      "page_id": 82,
+      "level": 2
+    },
+    {
+      "label": "من مسند حذيفة بن اليمان",
+      "page_id": 84,
+      "level": 1
+    },
+    {
+      "label": "ربعي بن حراش",
+      "page_id": 84,
+      "level": 2
+    },
+    {
+      "label": "من مسند سمرة بن جندب",
+      "page_id": 85,
+      "level": 1
+    },
+    {
+      "label": "الحسن البصري",
+      "page_id": 85,
+      "level": 2
+    },
+    {
+      "label": "أبو صالح",
+      "page_id": 86,
+      "level": 2
+    },
+    {
+      "label": "زر بن حبيش",
+      "page_id": 86,
+      "level": 2
+    },
+    {
+      "label": "أبو الأحوص",
+      "page_id": 87,
+      "level": 2
+    },
+    {
+      "label": "من مسند أبي بكرة",
+      "page_id": 88,
+      "level": 1
+    },
+    {
+      "label": "عبد الرحمن بن أبي بكرة",
+      "page_id": 88,
+      "level": 2
+    },
+    {
+      "label": "من مسند أبو جهم الأنصاري",
+      "page_id": 89,
+      "level": 1
+    },
+    {
+      "label": "مسلم بن سعيد مولى بني الحضرمي",
+      "page_id": 89,
+      "level": 2
+    },
+    {
+      "label": "من مسند أبي قتادة",
+      "page_id": 90,
+      "level": 1
+    },
+    {
+      "label": "عبد الله بن أبي قتادة",
+      "page_id": 90,
+      "level": 2
+    },
+    {
+      "label": "من مسند أبي هريرة",
+      "page_id": 91,
+      "level": 1
+    },
+    {
+      "label": "سعيد بن أبي سعيد المقبري",
+      "page_id": 91,
+      "level": 2
+    },
+    {
+      "label": "من مسند أم أيوب",
+      "page_id": 92,
+      "level": 1
+    },
+    {
+      "label": "أبو يزيد",
+      "page_id": 92,
+      "level": 2
+    }
+  ],
+  "toc_summary": {
+    "total_entries": 57,
+    "top_level_entries": 3,
+    "max_depth": 4
+  }
+}
