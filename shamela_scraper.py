@@ -1627,6 +1627,10 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
 
     parts.append('<div class="page-entry"><div class="page-text">')
 
+    def _should_skip(text: str) -> bool:
+        stripped = text.strip("[]（）()「」【】《》〈〉").strip()
+        return stripped in toc_new_labels or (all_toc_labels and stripped in all_toc_labels)
+
     paras = page.get("paragraphs")
     if paras:
         for para in paras:
@@ -1640,14 +1644,14 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
             elif ptype == "heading":
                 for line in para["lines"]:
                     if line.strip():
-                        text = line.strip()
-                        stripped = text.strip("[]（）()「」").strip()
-                        if stripped in toc_new_labels or (all_toc_labels and stripped in all_toc_labels):
+                        if _should_skip(line.strip()):
                             continue  # replaced by numbered heading
-                        parts.append(f'<p class="chapter-heading">{text}</p>')
+                        parts.append(f'<p class="chapter-heading">{line.strip()}</p>')
             else:
                 for line in para["lines"]:
                     if line.strip():
+                        if _should_skip(line.strip()):
+                            continue  # duplicate from shamela breadcrumb
                         parts.append(f'<p>{line.strip()}</p>')
     else:
         for chunk in page["text"].split("\n\n"):
