@@ -1607,7 +1607,7 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
     if page_breadcrumb:
         parts.append(
             f'<div class="bm-setter" '
-            f'style="display:none; string-set:chapter-title content()">'
+            f'style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;font-size:0;string-set:chapter-title content()">'
             f'{_e(page_breadcrumb)}</div>\n'
         )
 
