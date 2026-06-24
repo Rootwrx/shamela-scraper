@@ -1865,6 +1865,8 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
                     toc_idx += 1
 
             # Build current subtitle(s) and number(s) for this page
+
+            # Build current subtitle(s) and number(s) for this page
             if page_toc_new:
                 labels = [label for label, _, _ in page_toc_new]
                 numbers = [num for _, _, num in page_toc_new]
