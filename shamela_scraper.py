@@ -87,6 +87,7 @@ HEADERS = {
 # SMALL UTILITIES
 # ═══════════════════════════════════════════════════════════════════════════
 
+_ILLEGAL_CHARS = re.compile(r'[^\w\s\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF-]')
 
 
 def sanitize_filename(name: str, max_len: int = 80, fallback: str = "unknown") -> str:
@@ -1237,26 +1238,9 @@ def _build_html_css(meta: dict) -> str:
             padding-left: 0.5em;
         }}
 
-        @top-center {{
-            content: string(chapter-title);
-            font-family: {font_head};
-            font-size: 8pt;
-            font-weight: 500;
-            color: {TEAL};
-            text-align: center;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }}
+        @top-center {{ content: none; }}
 
-        @top-right {{
-            content: string(toc-number);
-            font-family: {font_head};
-            font-size: 8pt;
-            font-weight: 500;
-            color: {TEAL};
-            text-align: left;
-        }}
+        @top-right {{ content: none; }}
 
         @bottom-center {{
             content: "— " counter(page) " —";
@@ -1574,7 +1558,6 @@ def _build_html_css(meta: dict) -> str:
        ═══════════════════════════════════════════════════════ */
     .page-entry {{
         margin-bottom: 0;
-        break-before: page;
     }}
     .page-text p {{
         margin: 0.15em 0;          /* minimal vertical gap = more words per page */
