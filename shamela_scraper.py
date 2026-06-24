@@ -1249,7 +1249,14 @@ def _build_html_css(meta: dict) -> str:
             text-overflow: ellipsis;
         }}
 
-        @top-right {{ content: none; }}
+        @top-right {{
+            content: string(toc-number);
+            font-family: {font_head};
+            font-size: 8pt;
+            font-weight: 500;
+            color: {TEAL};
+            text-align: left;
+        }}
 
         @bottom-center {{
             content: "— " counter(page) " —";
@@ -1598,8 +1605,9 @@ def _build_html_css(meta: dict) -> str:
 
 
 def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
-                      vol_num_ref: list, page_breadcrumb: str = "",
-                      page_toc_new: list | None = None,
+                       vol_num_ref: list, page_breadcrumb: str = "",
+                       page_toc_number: str = "",
+                       page_toc_new: list | None = None,
                       all_toc_labels: set | None = None) -> tuple[str, int]:
     """
     Return (html_fragment, updated_vol_num) for a single page dict.
@@ -1619,6 +1627,12 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
             f'<div class="bm-setter" '
             f'style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;font-size:0;string-set:chapter-title content()">'
             f'{_e(page_breadcrumb)}</div>\n'
+        )
+    if page_toc_number:
+        parts.append(
+            f'<div class="bm-setter" '
+            f'style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;font-size:0;string-set:toc-number content()">'
+            f'{_e(page_toc_number)}</div>\n'
         )
 
     # ── Inject TOC bookmark anchors for this page ──────────────────────
@@ -1739,6 +1753,7 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
         book_title = meta.get("title", "كتاب")
         fh.write(f'<span style="display:none; string-set: book-title content(), chapter-title content()">'
                  f'{_e(_truncate(book_title))}</span>\n')
+        fh.write(f'<span style="display:none; string-set: toc-number content()"></span>\n')
 
         # ── COVER (ornate multi-layer design) ─────────────────────────
         fh.write('<div class="cover">\n')
@@ -1820,7 +1835,7 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
             key=lambda e: (e["page_id"], e.get("level", 0))
         )
         toc_idx = 0
-        breadcrumb_stack: list[tuple[str, int]] = []  # (numbered_label, level)
+        breadcrumb_stack: list[tuple[str, str, int]] = []  # (number, label, level)
         counters = [0] * 20  # counter per level for hierarchical numbering
 
         for page in pages_iter:
@@ -1835,7 +1850,7 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
                     entry = sorted_toc[toc_idx]
                     level = entry["level"]
                     # Pop entries at same or deeper level
-                    while breadcrumb_stack and breadcrumb_stack[-1][1] >= level:
+                    while breadcrumb_stack and breadcrumb_stack[-1][2] >= level:
                         breadcrumb_stack.pop()
                     # Increment counter at this level, reset deeper
                     counters[level] += 1
@@ -1845,12 +1860,17 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
                     number = ".".join(str(counters[i]) for i in range(level + 1))
                     label = entry["label"]
                     if label:
-                        breadcrumb_stack.append((f"{number} {label}", level))
+                        breadcrumb_stack.append((number, label, level))
                         page_toc_new.append((label, level, number))
                     toc_idx += 1
 
-            # Build breadcrumb path for this page (top-level first)
-            page_breadcrumb = breadcrumb_stack[-1][0] if breadcrumb_stack else ""
+            # Build current subtitle (just label) and its number
+            if breadcrumb_stack:
+                page_toc_number = breadcrumb_stack[-1][0]
+                page_breadcrumb = breadcrumb_stack[-1][1]
+            else:
+                page_toc_number = ""
+                page_breadcrumb = ""
 
             # volume divider
             if pid and pid in vol_boundaries and not first_page:
@@ -1861,7 +1881,8 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
                 vol_num[0] += 1
 
             frag, _ = _render_page_html(page, toc_by_page, vol_boundaries, vol_num,
-                                         page_breadcrumb, page_toc_new,
+                                         page_breadcrumb, page_toc_number,
+                                         page_toc_new,
                                          all_toc_labels)
             buf.append(frag)
             first_page = False
