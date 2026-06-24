@@ -86,27 +86,9 @@ HEADERS = {
 # ═══════════════════════════════════════════════════════════════════════════
 # SMALL UTILITIES
 # ═══════════════════════════════════════════════════════════════════════════
-def _truncate_middle(text: str, max_len: int = 80) -> str:
-    """Truncate from the middle, keeping the full last segment (number + label)."""
-    if len(text) <= max_len:
-        return text
-    parts = text.split(" > ")
-    if len(parts) < 2:
-        half = max_len // 2 - 1
-        return text[:half] + "⋯" + text[-half:]
-    last = parts[-1]
-    remaining = max_len - len(last) - 3  # " ⋯ "
-    if remaining <= 0:
-        half = max_len // 2 - 1
-        return text[:half] + "⋯" + text[-half:]
-    first_parts = []
-    for p in parts[:-1]:
-        candidate = " > ".join(first_parts + [p])
-        if len(candidate) <= remaining:
-            first_parts.append(p)
-        else:
-            break
-    return " > ".join(first_parts) + " ⋯ " + last
+
+
+
 
 
 
@@ -1622,13 +1604,15 @@ def _build_html_css(meta: dict) -> str:
 def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
                       vol_num_ref: list, page_breadcrumb: str = "",
                       page_toc_new: list | None = None,
-                      all_toc_labels: set | None = None) -> tuple[str, int]:
+                      all_toc_labels: set | None = None,
+                      book_title: str = "") -> tuple[str, int]:
     """
     Return (html_fragment, updated_vol_num) for a single page dict.
     vol_num_ref is a 1-element list used as a mutable int reference.
-    page_breadcrumb: full TOC breadcrumb path for this page.
+    page_breadcrumb: TOC entries starting on this page.
     page_toc_new: list of (label, level, number) for TOC entries starting on this page.
     all_toc_labels: set of all TOC entry labels (for dedup across all pages).
+    book_title: fallback when page_breadcrumb is empty (avoids stale header).
     """
     parts = []
     i_dummy = None  # volume divider needs "not first page" guard handled by caller
@@ -1636,11 +1620,12 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
     vol_num = vol_num_ref[0]
 
     # ── Inject breadcrumb anchor (sets chapter-title for running header) ───
-    if page_breadcrumb:
+    bc = page_breadcrumb if page_breadcrumb else book_title
+    if bc:
         parts.append(
             f'<div class="bm-setter" '
             f'style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;font-size:0;string-set:chapter-title content()">'
-            f'{_e(page_breadcrumb)}</div>\n'
+            f'{_e(bc)}</div>\n'
         )
 
     # ── Inject TOC bookmark anchors for this page ──────────────────────
@@ -1871,11 +1856,10 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
                         page_toc_new.append((label, level, number))
                     toc_idx += 1
 
-            # Build breadcrumb path for this page (top-level first)
+            # Build breadcrumb from entries actually starting on this page only
             page_breadcrumb = " > ".join(
-                label for label, _ in breadcrumb_stack if label
-            ) if breadcrumb_stack else ""
-            page_breadcrumb = _truncate_middle(page_breadcrumb)
+                f"{number} {label}" for label, level, number in page_toc_new
+            )
 
             # volume divider
             if pid and pid in vol_boundaries and not first_page:
@@ -1887,7 +1871,7 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
 
             frag, _ = _render_page_html(page, toc_by_page, vol_boundaries, vol_num,
                                          page_breadcrumb, page_toc_new,
-                                         all_toc_labels)
+                                         all_toc_labels, book_title)
             buf.append(frag)
             first_page = False
 
