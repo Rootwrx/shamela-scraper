@@ -595,6 +595,38 @@ def iter_pages_jsonl(pages_path: Path):
                     yield json.loads(line)
 
 
+def _scan_pages_jsonl(pages_path: Path) -> tuple[int | None, int]:
+    """
+    Scan pages.jsonl (the real source of truth on disk) and return
+    (max_page_id_found, total_line_count).
+
+    progress.json's "next_page_id" cursor is only updated in-memory right
+    after a contiguous batch is written, as a *separate* statement from the
+    pf.write() calls that actually persist the lines. A KeyboardInterrupt
+    (or crash) can land in that gap: lines are already on disk, but the
+    cursor we'd save reflects an earlier point. If the next run trusts that
+    stale cursor, it re-fetches and re-appends pages that are already
+    present, creating duplicates. Scanning the file itself sidesteps that
+    race entirely — it's always exactly as current as what's on disk.
+    """
+    max_id: int | None = None
+    lines = 0
+    if pages_path.exists():
+        with open(pages_path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                lines += 1
+                try:
+                    pid = json.loads(line).get("page_id")
+                except Exception:
+                    pid = None
+                if isinstance(pid, int) and (max_id is None or pid > max_id):
+                    max_id = pid
+    return max_id, lines
+
+
 def _fetch_one(args_tuple) -> tuple[int, str | None, str | None]:
     """Worker target: (session, book_id, page_id, stagger_delay) → (page_id, html, err)."""
     session, book_id, page_id, stagger = args_tuple
@@ -611,68 +643,28 @@ def _fetch_one(args_tuple) -> tuple[int, str | None, str | None]:
         return page_id, None, str(e)
 
 
-def _discover_page_ids(
+def _chain_walk(
     session: requests.Session,
     book_id: int,
-    start_page: int,
-    meta: dict,
+    start_id: int,
     workers: int,
     delay: float,
     progress: bool,
-) -> list[int]:
+    label: str = "[ids]",
+) -> tuple[list[int], dict[int, str]]:
     """
-    Return an ordered list of every page ID for the book.
-
-    Strategy (fastest first):
-      1. If meta["toc_flat"] covers ≥90% of pages sequentially, derive IDs
-         directly from it — zero extra HTTP requests.
-      2. Otherwise run a fast concurrent chain-walk: fetch N pages at a time,
-         each response reveals next_id, so we walk the chain in batches of
-         `workers` rather than one at a time.  HTML is cached and reused in
-         the main fetch so we don't double-download anything.
-
-    Returns the ordered list of page IDs starting from start_page.
+    Walk the linked list of pages forward from start_id (inclusive) by
+    following the "load next" button's data-next-id, in speculative
+    concurrent batches of `workers`. Stops when the chain genuinely ends
+    (no next id) or a fetch fails. Returns (ids_in_order, html_cache) where
+    html_cache lets the caller skip re-fetching anything found here.
     """
-    # ── Method 1: derive from TOC ──────────────────────────────────────
-    toc_flat = meta.get("toc_flat", [])
-    toc_ids  = sorted({e["page_id"] for e in toc_flat if e.get("page_id")})
-    if len(toc_ids) >= 2:
-        # Shamela page IDs within a book are monotonically increasing but may
-        # have gaps (deleted/merged pages).  If the gaps between consecutive
-        # TOC IDs are all ≤ some threshold we can fill them linearly.
-        gaps = [toc_ids[i+1] - toc_ids[i] for i in range(len(toc_ids)-1)]
-        if gaps and max(gaps) <= 20:
-            # Fill each gap linearly — fast and usually correct
-            filled: list[int] = []
-            for i, tid in enumerate(toc_ids):
-                filled.append(tid)
-                if i < len(toc_ids) - 1:
-                    for g in range(1, toc_ids[i+1] - tid):
-                        filled.append(tid + g)
-            # Filter to those ≥ start_page
-            filled = [x for x in filled if x >= start_page]
-            if filled:
-                if progress:
-                    print(f"  [ids] derived {len(filled)} page IDs from TOC (no extra requests)")
-                return filled
-
-    # ── Method 2: fast concurrent chain-walk ───────────────────────────
-    # Walk the linked list of pages in batches.  Each batch of `workers`
-    # pages is fetched in parallel; their HTMLs reveal the next IDs.
-    # We cache the HTML so _fetch_parallel can reuse it.
-    if progress:
-        print(f"  [ids] walking page chain with {workers} workers …", flush=True)
-
     ids_in_order: list[int] = []
-    html_cache: dict[int, str] = {}   # page_id → html (reused by main fetch)
+    html_cache: dict[int, str] = {}
 
-    current_id: int | None = start_page
+    current_id: int | None = start_id
     with ThreadPoolExecutor(max_workers=workers) as pool:
         while current_id is not None:
-            # Submit a batch starting from current_id — but we don't know the
-            # next IDs yet, so we can only submit one at a time in a chain.
-            # However, we can speculatively try current_id+1, +2 … (Shamela
-            # IDs are usually consecutive) and keep the ones that succeed.
             speculative = [current_id + i for i in range(workers)]
             stagger = delay / max(workers, 1)
             futs = {
@@ -685,7 +677,6 @@ def _discover_page_ids(
                 _, html, err = f.result()
                 results[pid] = (html, err)
 
-            # Walk from current_id forward through consecutive successes
             advanced = False
             for pid in speculative:
                 html, err = results.get(pid, (None, "not fetched"))
@@ -699,12 +690,10 @@ def _discover_page_ids(
                 if next_id is None:
                     current_id = None
                     break
-                # If next_id is not the next speculative, break and re-batch
                 if next_id != pid + 1:
                     break
 
             if not advanced:
-                # Speculation failed for all — fall back to single fetch
                 html, err = results.get(current_id, (None, "no result"))
                 if err or html is None:
                     if progress:
@@ -715,13 +704,212 @@ def _discover_page_ids(
                 current_id = get_next_page_id(html)
 
             if progress:
-                print(f"\r  [ids] discovered {len(ids_in_order)} page IDs …",
+                print(f"\r  {label} discovered {len(ids_in_order)} page IDs …",
                       end="", flush=True)
 
-    if progress:
-        print(f"\r  [ids] {len(ids_in_order)} page IDs discovered          ")
+    if progress and ids_in_order:
+        print(f"\r  {label} {len(ids_in_order)} page IDs discovered          ")
 
-    return ids_in_order, html_cache  # type: ignore[return-value]
+    return ids_in_order, html_cache
+
+
+def _chain_walk_until(
+    session: requests.Session,
+    book_id: int,
+    start_id: int,
+    stop_id: int,
+    workers: int,
+    delay: float,
+    progress: bool,
+    label: str = "[ids:gap]",
+) -> tuple[list[int], dict[int, str]]:
+    """
+    Like _chain_walk, but bounded: walks forward from start_id (which the
+    caller already knows is a valid page — e.g. a TOC anchor) and stops as
+    soon as the chain reaches or passes stop_id (the next TOC anchor).
+
+    Used to resolve one irregular gap in the TOC (a section the TOC didn't
+    label page-by-page) without walking the rest of the book — cost scales
+    with the size of *this* gap, not the whole book.
+
+    Returns (ids_in_order, html_cache); start_id itself is NOT included in
+    ids_in_order (the caller already has it from the TOC).
+    """
+    ids_in_order: list[int] = []
+    html_cache: dict[int, str] = {}
+
+    # Safety cap: a gap of size N shouldn't ever need to fetch more than a
+    # small multiple of N pages to resolve, even with some non-sequential
+    # jumps. Guards against an unexpected infinite/very-long walk.
+    max_fetches = max(50, (stop_id - start_id) * 3)
+    fetched = 0
+
+    current_id: int | None = start_id
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        while current_id is not None and current_id < stop_id and fetched < max_fetches:
+            speculative = [pid for pid in (current_id + i for i in range(workers)) if pid < stop_id]
+            if not speculative:
+                break
+            stagger = delay / max(workers, 1)
+            futs = {
+                pool.submit(_fetch_one, (session, book_id, pid, i * stagger)): pid
+                for i, pid in enumerate(speculative)
+            }
+            results: dict[int, tuple[str | None, str | None]] = {}
+            for f in as_completed(futs):
+                pid = futs[f]
+                _, html, err = f.result()
+                results[pid] = (html, err)
+            fetched += len(speculative)
+
+            advanced = False
+            for pid in speculative:
+                html, err = results.get(pid, (None, "not fetched"))
+                if err or html is None:
+                    break
+                next_id = get_next_page_id(html)
+                if pid != start_id:
+                    ids_in_order.append(pid)
+                html_cache[pid] = html
+                current_id = next_id
+                advanced = True
+                if next_id is None or next_id >= stop_id:
+                    current_id = None
+                    break
+                if next_id != pid + 1:
+                    break
+
+            if not advanced:
+                html, err = results.get(current_id, (None, "no result"))
+                if err or html is None:
+                    if progress:
+                        print(f"\n  [!] {label} error at {current_id}: {err}")
+                    break
+                if current_id != start_id:
+                    ids_in_order.append(current_id)
+                html_cache[current_id] = html
+                current_id = get_next_page_id(html)
+                fetched += 1
+
+    return ids_in_order, html_cache
+
+
+def _discover_page_ids(
+    session: requests.Session,
+    book_id: int,
+    start_page: int,
+    meta: dict,
+    workers: int,
+    delay: float,
+    progress: bool,
+    prog: dict | None = None,
+) -> list[int]:
+    """
+    Return an ordered list of every page ID for the book.
+
+    Strategy (fastest first):
+      1. Derive IDs from meta["toc_flat"] directly — zero extra HTTP
+         requests for the normal, regularly-spaced parts of the TOC.
+         Any *individual* irregular gap (a section the TOC didn't label
+         page-by-page) is chain-walked on its own, bounded to that gap —
+         so one bad gap in an otherwise-good TOC no longer forces walking
+         the entire book page-by-page (which used to be the fallback any
+         time a single gap exceeded the threshold, and was the dominant
+         cost on large books).
+         Trailing pages past the final TOC entry are chain-walked once and
+         cached in `prog["book_last_page_id"]` so later resumes don't repeat
+         that walk.
+      2. If the TOC has fewer than 2 usable anchors at all, fall back to a
+         fully concurrent chain-walk from start_page.
+
+    Returns the ordered list of page IDs starting from start_page.
+    """
+    GAP_FILL_THRESHOLD = 20
+
+    # ── Method 1: derive from TOC ──────────────────────────────────────
+    toc_flat = meta.get("toc_flat", [])
+    toc_ids  = sorted({e["page_id"] for e in toc_flat if e.get("page_id")})
+    if len(toc_ids) >= 2:
+        filled: list[int] = []
+        extra_cache: dict[int, str] = {}
+        walked_segments = 0
+        walked_pages = 0
+
+        for i, tid in enumerate(toc_ids):
+            nxt = toc_ids[i + 1] if i < len(toc_ids) - 1 else None
+
+            # This whole segment is before the resume point — nothing in
+            # it would survive the final start_page filter, so skip it
+            # entirely (including any gap-walk) rather than paying for it.
+            if nxt is not None and nxt < start_page:
+                continue
+
+            if tid >= start_page:
+                filled.append(tid)
+
+            if nxt is None:
+                continue
+
+            gap = nxt - tid
+            if gap <= 1:
+                continue
+
+            if gap - 1 <= GAP_FILL_THRESHOLD:
+                # Small, regular gap — fill linearly, zero requests.
+                for g in range(1, gap):
+                    val = tid + g
+                    if val >= start_page:
+                        filled.append(val)
+            else:
+                # Irregular section — chain-walk just this one gap (bounded
+                # to stop at `nxt`) instead of giving up on TOC-derivation
+                # for the entire rest of the book.
+                seg_ids, seg_cache = _chain_walk_until(
+                    session, book_id, tid, nxt, workers, delay,
+                    progress=False, label="[ids:gap]",
+                )
+                walked_segments += 1
+                walked_pages += len(seg_ids)
+                extra_cache.update(seg_cache)
+                for val in seg_ids:
+                    if val >= start_page:
+                        filled.append(val)
+
+        if walked_segments and progress:
+            print(f"  [ids] {walked_segments} irregular TOC gap(s) chain-walked "
+                  f"({walked_pages} pages) — rest derived directly from TOC")
+
+        # The gap-fill above only covers *between* TOC entries — the final
+        # section's trailing pages (after the last TOC anchor, up to the
+        # book's actual last page) are never touched.
+        cached_last_id = (prog or {}).get("book_last_page_id")
+        new_tail: list[int] = []
+        if cached_last_id is not None and cached_last_id >= toc_ids[-1]:
+            # Already discovered the book's true end on a previous run —
+            # no need to re-walk it, just fill the known range.
+            new_tail = [x for x in range(toc_ids[-1] + 1, cached_last_id + 1) if x >= start_page]
+        else:
+            tail_ids, tail_cache = _chain_walk(
+                session, book_id, toc_ids[-1], workers, delay,
+                progress=False, label="[ids:tail]",
+            )
+            full_new_tail = tail_ids[1:]   # tail_ids[0] is toc_ids[-1] itself
+            new_tail = [x for x in full_new_tail if x >= start_page]
+            extra_cache.update(tail_cache)
+            if prog is not None:
+                prog["book_last_page_id"] = max(toc_ids[-1], tail_ids[-1] if tail_ids else toc_ids[-1])
+
+        filled.extend(new_tail)
+        if filled:
+            if progress:
+                extra = f", +{len(new_tail)} trailing pages past last TOC entry" if new_tail else ""
+                print(f"  [ids] derived {len(filled)} page IDs from TOC{extra}")
+            return filled, extra_cache
+
+    # ── Method 2: fast concurrent chain-walk ───────────────────────────
+    if progress:
+        print(f"  [ids] walking page chain with {workers} workers …", flush=True)
+    return _chain_walk(session, book_id, start_page, workers, delay, progress)
 
 
 def scrape_book_pages_resumable(
@@ -774,6 +962,23 @@ def scrape_book_pages_resumable(
     elif prog.get("status") in ("in_progress", "paused", "error"):
         resume_from_id = prog.get("next_page_id") or start_page
         already_scraped = prog.get("pages_scraped", 0)
+
+        # Self-heal against the write/checkpoint race described above:
+        # trust pages.jsonl itself over progress.json's cursor whenever the
+        # file shows more than the cursor claims.
+        disk_max_id, disk_lines = _scan_pages_jsonl(pages_path)
+        healed = False
+        if disk_max_id is not None and disk_max_id + 1 > resume_from_id:
+            resume_from_id = disk_max_id + 1
+            healed = True
+        if disk_lines > already_scraped:
+            already_scraped = disk_lines
+            healed = True
+
+        if progress and healed:
+            print(f"  [heal] progress.json was behind pages.jsonl on disk — "
+                  f"correcting resume point to page_id={resume_from_id} "
+                  f"({already_scraped} pages on disk)")
         if progress:
             print(f"  [resume] from page_id={resume_from_id} "
                   f"({already_scraped} pages already saved)")
@@ -781,13 +986,19 @@ def scrape_book_pages_resumable(
     # ── Phase 1: enumerate IDs ─────────────────────────────────────────
     meta = meta or {}
     discovery = _discover_page_ids(
-        session, book_id, resume_from_id, meta, workers, delay, progress
+        session, book_id, resume_from_id, meta, workers, delay, progress, prog
     )
     # _discover_page_ids may return (list, cache) or just list
     if isinstance(discovery, tuple):
         page_ids, html_cache = discovery
     else:
         page_ids, html_cache = discovery, {}
+
+    # Persist a newly-discovered book-end boundary right away so an
+    # interrupt before any pages finish still saves the benefit of the
+    # tail-walk (otherwise it'd be silently re-walked next run).
+    if prog.get("book_last_page_id") is not None:
+        atomic_write_json(progress_path, prog)
 
     if not page_ids:
         prog["status"] = "error"
@@ -803,9 +1014,18 @@ def scrape_book_pages_resumable(
         print(f"  [fetch] {total} pages to fetch with {workers} workers …", flush=True)
 
     # ── Phase 2: parallel fetch all pages ─────────────────────────────
-    # Stagger submission slightly so we don't hammer the server with a
-    # burst; target: delay seconds between each request across all workers.
-    # e.g. delay=0.3, workers=8 → stagger=0.0375 s between submissions.
+    # Stagger only the initial burst across worker slots (i % workers) so
+    # the first `workers` requests don't all fire in the same instant.
+    # IMPORTANT: this must NOT scale with the global page index — an
+    # earlier version used `i * stagger` over the full page_ids range,
+    # which made every fetch sleep proportionally to its position in the
+    # *whole book* before even sending its request (e.g. page 400 of 441
+    # would sleep ~25s before requesting, regardless of how many workers
+    # were free). That created a hard floor of roughly
+    # total_pages × (delay / workers) seconds of pure idle sleep — easily
+    # the dominant cost for any book of a few hundred+ pages, independent
+    # of network speed or compute. The pool's `max_workers` already caps
+    # real concurrency; we only need to debounce the initial burst.
     stagger = delay / max(workers, 1)
     checkpoint_every = max(workers * 4, 50)
 
@@ -813,8 +1033,20 @@ def scrape_book_pages_resumable(
     count = already_scraped
     error_seen: str | None = None
 
+    write_cursor = 0   # index into page_ids of next page to write
+
     with open(pages_path, "a", encoding="utf-8") as pf:
-        with ThreadPoolExecutor(max_workers=workers) as pool:
+        # NOTE: deliberately not using "with ThreadPoolExecutor(...) as pool:".
+        # That context manager's __exit__ calls pool.shutdown(wait=True), which
+        # blocks until every *already-submitted* future finishes — including
+        # the hundreds still sitting in the queue behind the active `workers`.
+        # On Ctrl+C that made shutdown appear to hang, which is why two
+        # presses were needed and why Python's own interpreter-shutdown
+        # thread-join (atexit) would then race with the second interrupt and
+        # print "Exception ignored on threading shutdown". We manage shutdown
+        # ourselves so a single Ctrl+C cancels the queued work immediately.
+        pool = ThreadPoolExecutor(max_workers=workers)
+        try:
             # Submit all fetches; pages already in html_cache skip the network
             future_to_pid: dict = {}
             for i, pid in enumerate(page_ids):
@@ -824,12 +1056,11 @@ def scrape_book_pages_resumable(
                     f = pool.submit(lambda h=html, p=pid: (p, h, None))
                 else:
                     f = pool.submit(_fetch_one,
-                                    (session, book_id, pid, i * stagger))
+                                    (session, book_id, pid, (i % workers) * stagger))
                 future_to_pid[f] = pid
 
             # Collect results as they complete (any order), store in buffer
             completed_set: set[int] = set()
-            write_cursor = 0   # index into page_ids of next page to write
 
             for f in as_completed(future_to_pid):
                 pid_result, html, err = f.result()
@@ -876,6 +1107,22 @@ def scrape_book_pages_resumable(
                     print(f"\r  fetched {len(completed_set)}/{total} ({pct}%)  "
                           f"written {count - already_scraped}  ",
                           end="", flush=True)
+        except KeyboardInterrupt:
+            if progress:
+                print("\n  [!] Interrupted — cancelling queued fetches "
+                      "(a few in-flight requests may still finish) …")
+            # cancel_futures=True drops every future that hasn't started yet
+            # instead of waiting for the whole queue to drain. Only the
+            # `workers` requests already in flight still need to finish (or
+            # time out), so this returns almost immediately instead of
+            # hanging on the full backlog.
+            pool.shutdown(wait=False, cancel_futures=True)
+            prog["pages_scraped"] = count
+            prog["status"] = "paused"
+            atomic_write_json(progress_path, prog)
+            raise
+        else:
+            pool.shutdown(wait=True)
 
     if progress:
         print()
