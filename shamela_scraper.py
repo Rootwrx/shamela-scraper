@@ -1573,7 +1573,8 @@ def _build_html_css(meta: dict) -> str:
        BODY TEXT  —  dense, bolder
        ═══════════════════════════════════════════════════════ */
     .page-entry {{
-        margin-bottom: 0;          /* no gap between page entries */
+        margin-bottom: 0;
+        break-before: page;
     }}
     .page-text p {{
         margin: 0.15em 0;          /* minimal vertical gap = more words per page */
