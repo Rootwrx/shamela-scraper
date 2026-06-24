@@ -1518,27 +1518,6 @@ def _build_html_css(meta: dict) -> str:
     {toc_bm_css}
 
     /* ═══════════════════════════════════════════════════════
-       NUMBERED HEADINGS  (visible TOC entry markers)
-       ═══════════════════════════════════════════════════════ */
-    .toc-numbered-heading {{
-        font-family: {font_body};
-        font-size: 11pt;
-        font-weight: 700;
-        color: {TEAL};
-        margin: 0.6em 0 0.1em 0;
-        padding: 0.15em 0;
-        border-bottom: 1px solid {GOLD_L};
-    }}
-    .toc-numbered-heading.toc-nh-0 {{
-        font-size: 13pt;
-        color: {BROWN};
-    }}
-    .toc-numbered-heading.toc-nh-1 {{
-        font-size: 12pt;
-        color: {SEPIA};
-    }}
-
-    /* ═══════════════════════════════════════════════════════
        AUTHOR BIO
        ═══════════════════════════════════════════════════════ */
     .author-bio {{
@@ -1589,13 +1568,11 @@ def _build_html_css(meta: dict) -> str:
 
 
 def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
-                      vol_num_ref: list, page_breadcrumb: str = "",
-                      page_toc_new: list | None = None) -> tuple[str, int]:
+                      vol_num_ref: list, page_breadcrumb: str = "") -> tuple[str, int]:
     """
     Return (html_fragment, updated_vol_num) for a single page dict.
     vol_num_ref is a 1-element list used as a mutable int reference.
     page_breadcrumb: full TOC breadcrumb path for this page.
-    page_toc_new: list of (label, level, number) for TOC entries starting on this page.
     """
     parts = []
     i_dummy = None  # volume divider needs "not first page" guard handled by caller
@@ -1610,14 +1587,6 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
             f'string-set:chapter-title content()">'
             f'{_e(page_breadcrumb)}</div>\n'
         )
-
-    # ── Inject visible numbered headings for new TOC entries ────────────
-    for label, level, number in (page_toc_new or []):
-        if label:
-            parts.append(
-                f'<p class="toc-numbered-heading toc-nh-{level}">'
-                f'{number}. {_e(label)}</p>\n'
-            )
 
     # ── Inject TOC bookmark anchors for this page ──────────────────────
     if pid and pid in toc_by_page:
@@ -1777,9 +1746,6 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
         for page in pages_iter:
             pid = page.get("page_id")
 
-            # Collect new TOC entries starting on this page (with computed numbers)
-            page_toc_new: list[tuple[str, int, str]] = []
-
             # Update breadcrumb stack with any TOC entries starting on or before this page
             if pid is not None:
                 while toc_idx < len(sorted_toc) and sorted_toc[toc_idx]["page_id"] <= pid:
@@ -1797,12 +1763,11 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
                     label = entry["label"]
                     if label:
                         breadcrumb_stack.append((f"{number} {label}", level))
-                        page_toc_new.append((label, level, number))
                     toc_idx += 1
 
-            # Build breadcrumb path for this page (most specific first, RTL-friendly)
+            # Build breadcrumb path for this page (top-level first)
             page_breadcrumb = " > ".join(
-                label for label, _ in reversed(breadcrumb_stack) if label
+                label for label, _ in breadcrumb_stack if label
             ) if breadcrumb_stack else ""
 
             # volume divider
@@ -1814,7 +1779,7 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
                 vol_num[0] += 1
 
             frag, _ = _render_page_html(page, toc_by_page, vol_boundaries, vol_num,
-                                         page_breadcrumb, page_toc_new)
+                                         page_breadcrumb)
             buf.append(frag)
             first_page = False
 
