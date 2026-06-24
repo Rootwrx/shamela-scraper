@@ -56,9 +56,12 @@ import argparse
 import datetime
 import json
 import os
+import queue
 import re
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import requests
@@ -571,13 +574,342 @@ def get_next_page_id(html: str) -> int | None:
 # ═══════════════════════════════════════════════════════════════════════════
 
 def load_pages_jsonl(pages_path: Path) -> list[dict]:
+    """Load all pages into a list (used for JSON export only — not for PDF)."""
     pages = []
     if pages_path.exists():
-        for line in pages_path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line:
-                pages.append(json.loads(line))
+        with open(pages_path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line:
+                    pages.append(json.loads(line))
     return pages
+
+
+def iter_pages_jsonl(pages_path: Path):
+    """Yield pages one at a time from a .jsonl file — O(1) memory per page."""
+    if pages_path.exists():
+        with open(pages_path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line:
+                    yield json.loads(line)
+
+
+def _scan_pages_jsonl(pages_path: Path) -> tuple[int | None, int]:
+    """
+    Scan pages.jsonl (the real source of truth on disk) and return
+    (max_page_id_found, total_line_count).
+
+    progress.json's "next_page_id" cursor is only updated in-memory right
+    after a contiguous batch is written, as a *separate* statement from the
+    pf.write() calls that actually persist the lines. A KeyboardInterrupt
+    (or crash) can land in that gap: lines are already on disk, but the
+    cursor we'd save reflects an earlier point. If the next run trusts that
+    stale cursor, it re-fetches and re-appends pages that are already
+    present, creating duplicates. Scanning the file itself sidesteps that
+    race entirely — it's always exactly as current as what's on disk.
+    """
+    max_id: int | None = None
+    lines = 0
+    if pages_path.exists():
+        with open(pages_path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                lines += 1
+                try:
+                    pid = json.loads(line).get("page_id")
+                except Exception:
+                    pid = None
+                if isinstance(pid, int) and (max_id is None or pid > max_id):
+                    max_id = pid
+    return max_id, lines
+
+
+def _fetch_one(args_tuple) -> tuple[int, str | None, str | None]:
+    """Worker target: (session, book_id, page_id, stagger_delay) → (page_id, html, err)."""
+    session, book_id, page_id, stagger = args_tuple
+    if stagger > 0:
+        time.sleep(stagger)
+    url = f"{BASE}/book/{book_id}/{page_id}"
+    try:
+        resp = session.get(url, timeout=25)
+        if resp.status_code == 403:
+            return page_id, None, "403 Forbidden — try --cf_clearance"
+        resp.raise_for_status()
+        return page_id, resp.text, None
+    except requests.RequestException as e:
+        return page_id, None, str(e)
+
+
+def _chain_walk(
+    session: requests.Session,
+    book_id: int,
+    start_id: int,
+    workers: int,
+    delay: float,
+    progress: bool,
+    label: str = "[ids]",
+) -> tuple[list[int], dict[int, str]]:
+    """
+    Walk the linked list of pages forward from start_id (inclusive) by
+    following the "load next" button's data-next-id, in speculative
+    concurrent batches of `workers`. Stops when the chain genuinely ends
+    (no next id) or a fetch fails. Returns (ids_in_order, html_cache) where
+    html_cache lets the caller skip re-fetching anything found here.
+    """
+    ids_in_order: list[int] = []
+    html_cache: dict[int, str] = {}
+
+    current_id: int | None = start_id
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        while current_id is not None:
+            speculative = [current_id + i for i in range(workers)]
+            stagger = delay / max(workers, 1)
+            futs = {
+                pool.submit(_fetch_one, (session, book_id, pid, i * stagger)): pid
+                for i, pid in enumerate(speculative)
+            }
+            results: dict[int, tuple[str | None, str | None]] = {}
+            for f in as_completed(futs):
+                pid = futs[f]
+                _, html, err = f.result()
+                results[pid] = (html, err)
+
+            advanced = False
+            for pid in speculative:
+                html, err = results.get(pid, (None, "not fetched"))
+                if err or html is None:
+                    break
+                next_id = get_next_page_id(html)
+                ids_in_order.append(pid)
+                html_cache[pid] = html
+                current_id = next_id
+                advanced = True
+                if next_id is None:
+                    current_id = None
+                    break
+                if next_id != pid + 1:
+                    break
+
+            if not advanced:
+                html, err = results.get(current_id, (None, "no result"))
+                if err or html is None:
+                    if progress:
+                        print(f"\n  [!] chain-walk error at {current_id}: {err}")
+                    break
+                ids_in_order.append(current_id)
+                html_cache[current_id] = html
+                current_id = get_next_page_id(html)
+
+            if progress:
+                print(f"\r  {label} discovered {len(ids_in_order)} page IDs …",
+                      end="", flush=True)
+
+    if progress and ids_in_order:
+        print(f"\r  {label} {len(ids_in_order)} page IDs discovered          ")
+
+    return ids_in_order, html_cache
+
+
+def _chain_walk_until(
+    session: requests.Session,
+    book_id: int,
+    start_id: int,
+    stop_id: int,
+    workers: int,
+    delay: float,
+    progress: bool,
+    label: str = "[ids:gap]",
+) -> tuple[list[int], dict[int, str]]:
+    """
+    Like _chain_walk, but bounded: walks forward from start_id (which the
+    caller already knows is a valid page — e.g. a TOC anchor) and stops as
+    soon as the chain reaches or passes stop_id (the next TOC anchor).
+
+    Used to resolve one irregular gap in the TOC (a section the TOC didn't
+    label page-by-page) without walking the rest of the book — cost scales
+    with the size of *this* gap, not the whole book.
+
+    Returns (ids_in_order, html_cache); start_id itself is NOT included in
+    ids_in_order (the caller already has it from the TOC).
+    """
+    ids_in_order: list[int] = []
+    html_cache: dict[int, str] = {}
+
+    # Safety cap: a gap of size N shouldn't ever need to fetch more than a
+    # small multiple of N pages to resolve, even with some non-sequential
+    # jumps. Guards against an unexpected infinite/very-long walk.
+    max_fetches = max(50, (stop_id - start_id) * 3)
+    fetched = 0
+
+    current_id: int | None = start_id
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        while current_id is not None and current_id < stop_id and fetched < max_fetches:
+            speculative = [pid for pid in (current_id + i for i in range(workers)) if pid < stop_id]
+            if not speculative:
+                break
+            stagger = delay / max(workers, 1)
+            futs = {
+                pool.submit(_fetch_one, (session, book_id, pid, i * stagger)): pid
+                for i, pid in enumerate(speculative)
+            }
+            results: dict[int, tuple[str | None, str | None]] = {}
+            for f in as_completed(futs):
+                pid = futs[f]
+                _, html, err = f.result()
+                results[pid] = (html, err)
+            fetched += len(speculative)
+
+            advanced = False
+            for pid in speculative:
+                html, err = results.get(pid, (None, "not fetched"))
+                if err or html is None:
+                    break
+                next_id = get_next_page_id(html)
+                if pid != start_id:
+                    ids_in_order.append(pid)
+                html_cache[pid] = html
+                current_id = next_id
+                advanced = True
+                if next_id is None or next_id >= stop_id:
+                    current_id = None
+                    break
+                if next_id != pid + 1:
+                    break
+
+            if not advanced:
+                html, err = results.get(current_id, (None, "no result"))
+                if err or html is None:
+                    if progress:
+                        print(f"\n  [!] {label} error at {current_id}: {err}")
+                    break
+                if current_id != start_id:
+                    ids_in_order.append(current_id)
+                html_cache[current_id] = html
+                current_id = get_next_page_id(html)
+                fetched += 1
+
+    return ids_in_order, html_cache
+
+
+def _discover_page_ids(
+    session: requests.Session,
+    book_id: int,
+    start_page: int,
+    meta: dict,
+    workers: int,
+    delay: float,
+    progress: bool,
+    prog: dict | None = None,
+) -> list[int]:
+    """
+    Return an ordered list of every page ID for the book.
+
+    Strategy (fastest first):
+      1. Derive IDs from meta["toc_flat"] directly — zero extra HTTP
+         requests for the normal, regularly-spaced parts of the TOC.
+         Any *individual* irregular gap (a section the TOC didn't label
+         page-by-page) is chain-walked on its own, bounded to that gap —
+         so one bad gap in an otherwise-good TOC no longer forces walking
+         the entire book page-by-page (which used to be the fallback any
+         time a single gap exceeded the threshold, and was the dominant
+         cost on large books).
+         Trailing pages past the final TOC entry are chain-walked once and
+         cached in `prog["book_last_page_id"]` so later resumes don't repeat
+         that walk.
+      2. If the TOC has fewer than 2 usable anchors at all, fall back to a
+         fully concurrent chain-walk from start_page.
+
+    Returns the ordered list of page IDs starting from start_page.
+    """
+    GAP_FILL_THRESHOLD = 20
+
+    # ── Method 1: derive from TOC ──────────────────────────────────────
+    toc_flat = meta.get("toc_flat", [])
+    toc_ids  = sorted({e["page_id"] for e in toc_flat if e.get("page_id")})
+    if len(toc_ids) >= 2:
+        filled: list[int] = []
+        extra_cache: dict[int, str] = {}
+        walked_segments = 0
+        walked_pages = 0
+
+        for i, tid in enumerate(toc_ids):
+            nxt = toc_ids[i + 1] if i < len(toc_ids) - 1 else None
+
+            # This whole segment is before the resume point — nothing in
+            # it would survive the final start_page filter, so skip it
+            # entirely (including any gap-walk) rather than paying for it.
+            if nxt is not None and nxt < start_page:
+                continue
+
+            if tid >= start_page:
+                filled.append(tid)
+
+            if nxt is None:
+                continue
+
+            gap = nxt - tid
+            if gap <= 1:
+                continue
+
+            if gap - 1 <= GAP_FILL_THRESHOLD:
+                # Small, regular gap — fill linearly, zero requests.
+                for g in range(1, gap):
+                    val = tid + g
+                    if val >= start_page:
+                        filled.append(val)
+            else:
+                # Irregular section — chain-walk just this one gap (bounded
+                # to stop at `nxt`) instead of giving up on TOC-derivation
+                # for the entire rest of the book.
+                seg_ids, seg_cache = _chain_walk_until(
+                    session, book_id, tid, nxt, workers, delay,
+                    progress=False, label="[ids:gap]",
+                )
+                walked_segments += 1
+                walked_pages += len(seg_ids)
+                extra_cache.update(seg_cache)
+                for val in seg_ids:
+                    if val >= start_page:
+                        filled.append(val)
+
+        if walked_segments and progress:
+            print(f"  [ids] {walked_segments} irregular TOC gap(s) chain-walked "
+                  f"({walked_pages} pages) — rest derived directly from TOC")
+
+        # The gap-fill above only covers *between* TOC entries — the final
+        # section's trailing pages (after the last TOC anchor, up to the
+        # book's actual last page) are never touched.
+        cached_last_id = (prog or {}).get("book_last_page_id")
+        new_tail: list[int] = []
+        if cached_last_id is not None and cached_last_id >= toc_ids[-1]:
+            # Already discovered the book's true end on a previous run —
+            # no need to re-walk it, just fill the known range.
+            new_tail = [x for x in range(toc_ids[-1] + 1, cached_last_id + 1) if x >= start_page]
+        else:
+            tail_ids, tail_cache = _chain_walk(
+                session, book_id, toc_ids[-1], workers, delay,
+                progress=False, label="[ids:tail]",
+            )
+            full_new_tail = tail_ids[1:]   # tail_ids[0] is toc_ids[-1] itself
+            new_tail = [x for x in full_new_tail if x >= start_page]
+            extra_cache.update(tail_cache)
+            if prog is not None:
+                prog["book_last_page_id"] = max(toc_ids[-1], tail_ids[-1] if tail_ids else toc_ids[-1])
+
+        filled.extend(new_tail)
+        if filled:
+            if progress:
+                extra = f", +{len(new_tail)} trailing pages past last TOC entry" if new_tail else ""
+                print(f"  [ids] derived {len(filled)} page IDs from TOC{extra}")
+            return filled, extra_cache
+
+    # ── Method 2: fast concurrent chain-walk ───────────────────────────
+    if progress:
+        print(f"  [ids] walking page chain with {workers} workers …", flush=True)
+    return _chain_walk(session, book_id, start_page, workers, delay, progress)
 
 
 def scrape_book_pages_resumable(
@@ -585,25 +917,30 @@ def scrape_book_pages_resumable(
     book_id: int,
     book_dir: Path,
     start_page: int,
+    meta: dict = None,
     limit: int = None,
-    delay: float = 1.0,
+    delay: float = 0.5,
     force: bool = False,
     progress: bool = True,
+    workers: int = 8,
 ) -> dict:
     """
-    Crawl pages of a book, writing each page to <book_dir>/pages.jsonl as soon
-    as it is parsed, and checkpointing exact resume position to
-    <book_dir>/progress.json after every page. Safe to interrupt (Ctrl-C,
-    crash, network loss) at any point — re-running resumes from the exact
-    next page id instead of restarting the whole book.
+    TRUE parallel scraper.
 
-    Returns the final progress dict, with status one of:
-      "done"        — reached the end of the book (no more next-page id)
-      "paused"      — stopped early because --limit was reached
-      "error"       — a request failed; progress saved so it can retry
+    Phase 1 — ID discovery (fast):
+      • Tries to enumerate all page IDs from the TOC without any HTTP requests.
+      • Falls back to a batched concurrent chain-walk (workers pages at a time).
+
+    Phase 2 — Parallel fetch (fast):
+      • All page IDs are known upfront → all fetches submitted to the pool at once.
+      • Responses are collected as they arrive (any order) then sorted and written
+        to pages.jsonl in the correct order.
+      • Checkpoint written every `checkpoint_every` pages.
+
+    Memory: only `workers × avg_page_size` bytes in flight at any moment.
     """
     progress_path = book_dir / "progress.json"
-    pages_path = book_dir / "pages.jsonl"
+    pages_path    = book_dir / "pages.jsonl"
 
     prog = load_json(progress_path, None)
     if prog and prog.get("status") == "done" and not force:
@@ -612,79 +949,195 @@ def scrape_book_pages_resumable(
                   f"({prog.get('pages_scraped', 0)} pages)")
         return prog
 
+    already_scraped = 0
+    resume_from_id  = start_page
+
     if not prog or force:
         prog = {
-            "book_id": book_id,
-            "status": "in_progress",
-            "next_page_id": start_page,
-            "last_page_id": None,
-            "pages_scraped": 0,
+            "book_id": book_id, "status": "in_progress",
+            "next_page_id": start_page, "last_page_id": None, "pages_scraped": 0,
         }
-        pages_path.write_text("", encoding="utf-8")  # fresh start / forced redo
+        pages_path.write_text("", encoding="utf-8")
         atomic_write_json(progress_path, prog)
-    elif prog.get("status") == "in_progress" or prog.get("status") == "paused" or prog.get("status") == "error":
-        if progress:
-            print(f"  [resume] book {book_id}: continuing from page_id="
-                  f"{prog.get('next_page_id')} ({prog.get('pages_scraped', 0)} pages so far)")
+    elif prog.get("status") in ("in_progress", "paused", "error"):
+        resume_from_id = prog.get("next_page_id") or start_page
+        already_scraped = prog.get("pages_scraped", 0)
 
-    current_id = prog.get("next_page_id")
-    count = prog.get("pages_scraped", 0)
+        # Self-heal against the write/checkpoint race described above:
+        # trust pages.jsonl itself over progress.json's cursor whenever the
+        # file shows more than the cursor claims.
+        disk_max_id, disk_lines = _scan_pages_jsonl(pages_path)
+        healed = False
+        if disk_max_id is not None and disk_max_id + 1 > resume_from_id:
+            resume_from_id = disk_max_id + 1
+            healed = True
+        if disk_lines > already_scraped:
+            already_scraped = disk_lines
+            healed = True
+
+        if progress and healed:
+            print(f"  [heal] progress.json was behind pages.jsonl on disk — "
+                  f"correcting resume point to page_id={resume_from_id} "
+                  f"({already_scraped} pages on disk)")
+        if progress:
+            print(f"  [resume] from page_id={resume_from_id} "
+                  f"({already_scraped} pages already saved)")
+
+    # ── Phase 1: enumerate IDs ─────────────────────────────────────────
+    meta = meta or {}
+    discovery = _discover_page_ids(
+        session, book_id, resume_from_id, meta, workers, delay, progress, prog
+    )
+    # _discover_page_ids may return (list, cache) or just list
+    if isinstance(discovery, tuple):
+        page_ids, html_cache = discovery
+    else:
+        page_ids, html_cache = discovery, {}
+
+    # Persist a newly-discovered book-end boundary right away so an
+    # interrupt before any pages finish still saves the benefit of the
+    # tail-walk (otherwise it'd be silently re-walked next run).
+    if prog.get("book_last_page_id") is not None:
+        atomic_write_json(progress_path, prog)
+
+    if not page_ids:
+        prog["status"] = "error"
+        prog["error"]  = "Could not discover any page IDs"
+        atomic_write_json(progress_path, prog)
+        return prog
+
+    if limit is not None:
+        page_ids = page_ids[:limit]
+
+    total = len(page_ids)
+    if progress:
+        print(f"  [fetch] {total} pages to fetch with {workers} workers …", flush=True)
+
+    # ── Phase 2: parallel fetch all pages ─────────────────────────────
+    # Stagger only the initial burst across worker slots (i % workers) so
+    # the first `workers` requests don't all fire in the same instant.
+    # IMPORTANT: this must NOT scale with the global page index — an
+    # earlier version used `i * stagger` over the full page_ids range,
+    # which made every fetch sleep proportionally to its position in the
+    # *whole book* before even sending its request (e.g. page 400 of 441
+    # would sleep ~25s before requesting, regardless of how many workers
+    # were free). That created a hard floor of roughly
+    # total_pages × (delay / workers) seconds of pure idle sleep — easily
+    # the dominant cost for any book of a few hundred+ pages, independent
+    # of network speed or compute. The pool's `max_workers` already caps
+    # real concurrency; we only need to debounce the initial burst.
+    stagger = delay / max(workers, 1)
+    checkpoint_every = max(workers * 4, 50)
+
+    results_buf: dict[int, list[dict]] = {}   # page_id → parsed page data
+    count = already_scraped
+    error_seen: str | None = None
+
+    write_cursor = 0   # index into page_ids of next page to write
 
     with open(pages_path, "a", encoding="utf-8") as pf:
-        while current_id is not None:
-            if limit is not None and count >= limit:
-                prog["status"] = "paused"
-                break
+        # NOTE: deliberately not using "with ThreadPoolExecutor(...) as pool:".
+        # That context manager's __exit__ calls pool.shutdown(wait=True), which
+        # blocks until every *already-submitted* future finishes — including
+        # the hundreds still sitting in the queue behind the active `workers`.
+        # On Ctrl+C that made shutdown appear to hang, which is why two
+        # presses were needed and why Python's own interpreter-shutdown
+        # thread-join (atexit) would then race with the second interrupt and
+        # print "Exception ignored on threading shutdown". We manage shutdown
+        # ourselves so a single Ctrl+C cancels the queued work immediately.
+        pool = ThreadPoolExecutor(max_workers=workers)
+        try:
+            # Submit all fetches; pages already in html_cache skip the network
+            future_to_pid: dict = {}
+            for i, pid in enumerate(page_ids):
+                if pid in html_cache:
+                    # Already fetched during discovery — wrap in a trivial future
+                    html = html_cache.pop(pid)  # free memory as we go
+                    f = pool.submit(lambda h=html, p=pid: (p, h, None))
+                else:
+                    f = pool.submit(_fetch_one,
+                                    (session, book_id, pid, (i % workers) * stagger))
+                future_to_pid[f] = pid
 
-            url = f"{BASE}/book/{book_id}/{current_id}"
-            try:
-                resp = session.get(url, timeout=20)
-                if resp.status_code == 403:
-                    prog["status"] = "error"
-                    prog["error"] = "403 Forbidden — try supplying --cf_clearance cookie"
-                    atomic_write_json(progress_path, prog)
+            # Collect results as they complete (any order), store in buffer
+            completed_set: set[int] = set()
+
+            for f in as_completed(future_to_pid):
+                pid_result, html, err = f.result()
+
+                if err:
+                    error_seen = err
                     if progress:
-                        print(f"\n  [!] 403 on page {current_id} — try --cf_clearance cookie")
-                    break
-                resp.raise_for_status()
-            except requests.RequestException as e:
-                prog["status"] = "error"
-                prog["error"] = str(e)
-                atomic_write_json(progress_path, prog)
+                        print(f"\n  [!] Error on page {pid_result}: {err}")
+                    # Don't abort — collect what we have; errors recorded below
+                    completed_set.add(pid_result)
+                    results_buf[pid_result] = []   # empty = skipped
+                    continue
+
+                page_data = parse_page_html(html)
+                results_buf[pid_result] = page_data
+                completed_set.add(pid_result)
+
+                # Write pages in order as soon as a contiguous prefix is ready
+                flushed_any = False
+                while write_cursor < len(page_ids):
+                    next_pid = page_ids[write_cursor]
+                    if next_pid not in completed_set:
+                        break
+                    for pg in results_buf.pop(next_pid, []):
+                        pf.write(json.dumps(pg, ensure_ascii=False) + "\n")
+                        count += 1
+                    write_cursor += 1
+                    flushed_any = True
+
+                if flushed_any:
+                    pf.flush()
+                    last_written = page_ids[write_cursor - 1]
+                    next_pending = page_ids[write_cursor] if write_cursor < len(page_ids) else None
+                    prog["last_page_id"]  = last_written
+                    prog["next_page_id"]  = next_pending
+                    prog["pages_scraped"] = count
+                    prog["status"]        = "in_progress"
+                    # Checkpoint periodically (not every page — avoids I/O bottleneck)
+                    if write_cursor % checkpoint_every == 0 or next_pending is None:
+                        atomic_write_json(progress_path, prog)
+
                 if progress:
-                    print(f"\n  [!] Error fetching page {current_id}: {e}")
-                break
-
-            html = resp.text
-            page_data = parse_page_html(html)
-            for pg in page_data:
-                pf.write(json.dumps(pg, ensure_ascii=False) + "\n")
-            pf.flush()
-            count += len(page_data)
-
-            next_id = get_next_page_id(html)
-
-            prog["last_page_id"] = current_id
-            prog["next_page_id"] = next_id
-            prog["pages_scraped"] = count
-            prog["status"] = "in_progress"
-            atomic_write_json(progress_path, prog)
-
+                    pct = int(100 * len(completed_set) / total)
+                    print(f"\r  fetched {len(completed_set)}/{total} ({pct}%)  "
+                          f"written {count - already_scraped}  ",
+                          end="", flush=True)
+        except KeyboardInterrupt:
             if progress:
-                print(f"\r  pages scraped: {count}  (current id: {current_id})",
-                      end="", flush=True)
-
-            current_id = next_id
-            if next_id is not None:
-                time.sleep(delay)
+                print("\n  [!] Interrupted — cancelling queued fetches "
+                      "(a few in-flight requests may still finish) …")
+            # cancel_futures=True drops every future that hasn't started yet
+            # instead of waiting for the whole queue to drain. Only the
+            # `workers` requests already in flight still need to finish (or
+            # time out), so this returns almost immediately instead of
+            # hanging on the full backlog.
+            pool.shutdown(wait=False, cancel_futures=True)
+            prog["pages_scraped"] = count
+            prog["status"] = "paused"
+            atomic_write_json(progress_path, prog)
+            raise
+        else:
+            pool.shutdown(wait=True)
 
     if progress:
         print()
 
-    if prog.get("status") not in ("error", "paused"):
-        prog["status"] = "done" if prog.get("next_page_id") is None else "paused"
-        atomic_write_json(progress_path, prog)
+    if error_seen and count == already_scraped:
+        prog["status"] = "error"
+        prog["error"]  = error_seen
+    elif write_cursor < len(page_ids):
+        prog["status"] = "paused"
+    else:
+        prog["status"]       = "done"
+        prog["next_page_id"] = None
 
+    prog["pages_scraped"] = count
+    atomic_write_json(progress_path, prog)
     return prog
 
 
@@ -707,151 +1160,184 @@ def _e(text: str) -> str:
 # meta["toc_flat"] for downstream use, but no visible TOC page is produced.
 
 
-def build_html(meta: dict, author_info: dict, pages: list[dict]) -> str:
-    """Render book data as a full UTF-8 HTML document with RTL Arabic styling."""
-    import datetime
+def _build_html_css(meta: dict) -> str:
+    """Return the full <style> block CSS string (shared by stream and legacy paths)."""
+    import datetime as _dt  # noqa: F401 — kept for callers that need it
 
     font_candidates = ["ScheherazadeNew", "Amiri", "AmiriQuran", "Traditional Arabic", "Arial"]
     font_stack = ", ".join(f'"{f}"' for f in font_candidates) + ", serif"
 
-    # ── volume boundary set ────────────────────────────────────────────
-    vol_starts = set(meta.get("volume_start_pages", []))
-
-    # ── TOC BOOKMARK INJECTION ─────────────────────────────────────────
-    # Build page_id -> [(label, toc_level), ...] lookup from parsed TOC.
-    # Each TOC entry becomes a PDF bookmark at the page where it starts.
     toc_flat = meta.get("toc_flat", [])
-    toc_by_page = {}
     max_toc_level = -1
     for entry in toc_flat:
-        pid = entry.get("page_id")
-        if pid is not None:
-            toc_by_page.setdefault(pid, []).append(
-                (entry.get("label", ""), entry.get("level", 0))
-            )
-            if entry.get("level", 0) > max_toc_level:
-                max_toc_level = entry["level"]
+        if entry.get("level", 0) > max_toc_level:
+            max_toc_level = entry["level"]
 
-    # Generate CSS classes: .toc-bm-0, .toc-bm-1, ...
-    # TOC level 0 -> PDF bookmark-level 2 (nested under h2 "نص الكتاب" at level 1)
     toc_bm_css_parts = []
     for lvl in range(max_toc_level + 1):
-        bm = lvl + 2  # offset: h2 is bookmark-level 1
+        bm = lvl + 2
         toc_bm_css_parts.append(
             f".toc-bm-{lvl} {{ bookmark-level: {bm}; bookmark-label: content(); "
             f"prince-bookmark-level: {bm}; prince-bookmark-label: content(); }}"
         )
     toc_bm_css = "\n    ".join(toc_bm_css_parts)
 
-    # Re-render CSS with TOC bookmark classes injected
+    # Accent palette — warm gold + deep teal
+    GOLD   = "#9a6f1e"
+    GOLD_L = "#c49a3c"   # lighter gold for ornaments
+    TEAL   = "#1a3a4a"   # deep teal for body / headings
+    TEAL_M = "#2a5a72"   # mid teal for sub-headings
+    RUST   = "#8b2e00"   # rust-red for chapter titles
+    INK    = "#0d0d0d"   # near-black body text
+
+    book_title_escaped = _e(meta.get("title", ""))
+
     css = f"""
-    /* Front-matter pages (cover, author bio, TOC): roman numerals, no header */
+    /* ═══════════════════════════════════════════════════════
+       PAGE GEOMETRY  —  tight margins = maximum words per page
+       ═══════════════════════════════════════════════════════ */
+
+    /* Front-matter: roman numerals, no running header */
     @page front-matter {{
         size: A4;
-        margin: 2.5cm 2.5cm 3cm 2.5cm;
+        margin: 1.6cm 1.8cm 2cm 1.8cm;
         @bottom-center {{
             content: counter(page, lower-roman);
             font-family: {font_stack};
-            font-size: 9pt;
-            color: #ccc;
+            font-size: 8pt;
+            color: #aaa;
         }}
-        @top-left {{ content: none; }}
+        @top-left  {{ content: none; }}
         @top-right {{ content: none; }}
     }}
 
-    /* Book-text pages: arabic numerals starting from 1, with header */
+    /* Book-text pages: page number top-left AND bottom-centre */
     @page book-text {{
         size: A4;
-        margin: 2.5cm 2.5cm 3cm 2.5cm;
-        @bottom-center {{
+        margin: 1.6cm 1.8cm 2cm 1.8cm;
+
+        /* ── top-left: page number ── */
+        @top-left {{
             content: counter(page);
             font-family: {font_stack};
-            font-size: 9pt;
-            color: #aaa;
+            font-size: 8.5pt;
+            font-weight: 700;
+            color: {GOLD};
+            border-bottom: 1.5pt solid {GOLD};
+            padding-bottom: 2pt;
         }}
-        @top-left {{
+
+        /* ── top-right: book title ── */
+        @top-right {{
+            content: "{book_title_escaped}";
+            font-family: {font_stack};
+            font-size: 7.5pt;
+            color: #888;
+        }}
+
+        /* ── top-center: running chapter name ── */
+        @top-center {{
             content: string(chapter-title);
             font-family: {font_stack};
-            font-size: 8pt;
-            color: #aaa;
+            font-size: 7.5pt;
+            color: {TEAL_M};
+            font-style: italic;
         }}
-        @top-right {{
-            content: "{_e(meta.get('title',''))}";
+
+        /* ── bottom-centre: page number (classic position) ── */
+        @bottom-center {{
+            content: "— " counter(page) " —";
             font-family: {font_stack};
-            font-size: 8pt;
-            color: #aaa;
+            font-size: 8.5pt;
+            color: #777;
         }}
+        @bottom-left  {{ content: none; }}
+        @bottom-right {{ content: none; }}
     }}
 
-    /* Cover page: no numbering at all */
+    /* Bare @page default (cover) */
     @page {{
         size: A4;
-        margin: 2.5cm 2.5cm 3cm 2.5cm;
+        margin: 1.6cm 1.8cm 2cm 1.8cm;
     }}
-    @page :first {{ @top-left {{ content: none }} @top-right {{ content: none }} @bottom-center {{ content: none }} }}
+    @page :first {{
+        @top-left   {{ content: none; }}
+        @top-right  {{ content: none; }}
+        @top-center {{ content: none; }}
+        @bottom-center {{ content: none; }}
+    }}
 
+    /* ═══════════════════════════════════════════════════════
+       GLOBAL TYPOGRAPHY
+       ═══════════════════════════════════════════════════════ */
     * {{ box-sizing: border-box; }}
+
     body {{
         font-family: {font_stack};
-        font-size: 13pt;
-        line-height: 2.2;
+        font-size: 12.5pt;        /* slightly smaller → more words per page */
+        font-weight: 500;         /* medium-bold — heavier than normal */
+        line-height: 1.85;        /* tight but legible for Arabic */
         direction: rtl;
-        text-align: right;
-        color: #1a1a1a;
-        background: white;
+        text-align: justify;
         text-justify: kashida;
+        color: {INK};
+        background: white;
     }}
 
-    /* ── COVER ── */
+    /* ═══════════════════════════════════════════════════════
+       COVER PAGE
+       ═══════════════════════════════════════════════════════ */
     .cover {{
         page-break-after: always;
         text-align: center;
-        padding: 4cm 1.5cm 2cm;
-        border: 6px double #8b6914;
-        margin: 0.5cm;
+        padding: 3.5cm 1.2cm 1.5cm;
+        border: 5px double {GOLD};
+        margin: 0.3cm;
+        background: linear-gradient(180deg, #fdfaf4 0%, #fff 60%);
     }}
     .cover-ornament {{
-        font-size: 20pt;
-        color: #8b6914;
-        margin-bottom: 0.5em;
-        letter-spacing: 0.3em;
+        font-size: 18pt;
+        color: {GOLD_L};
+        margin-bottom: 0.4em;
+        letter-spacing: 0.4em;
     }}
     .cover h1 {{
-        font-size: 20pt;
-        color: #1a1a2e;
-        margin: 0.6em 0;
-        line-height: 1.8;
-        font-weight: bold;
+        font-size: 28pt;          /* BIG title on cover */
+        color: {TEAL};
+        margin: 0.5em 0;
+        line-height: 1.5;
+        font-weight: 900;
+        letter-spacing: 0.02em;
     }}
-
     .cover .meta-table {{
-        margin: 1.5em auto;
+        margin: 1.2em auto;
         border-collapse: collapse;
-        width: 80%;
-        font-size: 11pt;
+        width: 82%;
+        font-size: 10.5pt;
         color: #333;
     }}
     .cover .meta-table td {{
-        padding: 0.4em 0.8em;
+        padding: 0.35em 0.7em;
         text-align: right;
         border-bottom: 1px dotted #ddd;
         vertical-align: top;
     }}
     .cover .meta-label {{
-        color: #8b6914;
-        font-weight: bold;
+        color: {GOLD};
+        font-weight: 800;
         white-space: nowrap;
-        text-align: right;
-        width: 25%;
+        width: 26%;
     }}
     .cover .source {{
-        font-size: 8pt;
+        font-size: 7.5pt;
         color: #bbb;
-        margin-top: 2em;
+        margin-top: 1.5em;
     }}
 
-    /* ── SECTION / CHAPTER PAGES ── */
-    .section {{ page-break-before: always; }}
+    /* ═══════════════════════════════════════════════════════
+       SECTIONS
+       ═══════════════════════════════════════════════════════ */
+    .section       {{ page-break-before: always; }}
     .section-front {{
         page: front-matter;
         page-break-before: always;
@@ -861,60 +1347,69 @@ def build_html(meta: dict, author_info: dict, pages: list[dict]) -> str:
         page-break-before: always;
         counter-reset: page 1;
     }}
+
+    /* Volume divider splash */
     .volume-divider {{
         page-break-before: always;
         page-break-after: always;
         text-align: center;
-        padding-top: 8cm;
-        background: #fafaf8;
+        padding-top: 7cm;
+        background: #fdfaf4;
     }}
     .volume-divider h2 {{
-        font-size: 24pt;
-        color: #8b6914;
+        font-size: 30pt;
+        color: {GOLD};
         border: none;
+        letter-spacing: 0.08em;
     }}
 
-    /* ── HEADINGS + PDF NATIVE BOOKMARKS ──
-       WeasyPrint uses bookmark-level / bookmark-label to build the PDF outline.
-       No visible TOC page is produced; these CSS properties generate the
-       navigation sidebar bookmarks that PDF readers display in their outline
-       panel.  prince-bookmark-* aliases are included for compatibility.
-    */
+    /* ═══════════════════════════════════════════════════════
+       HEADINGS  (bigger + coloured)
+       ═══════════════════════════════════════════════════════ */
+
+    /* Section-level h2 — bold teal with gold underline */
     h2 {{
-        font-size: 15pt;
-        color: #1a1a2e;
-        border-bottom: 2px solid #8b6914;
-        padding-bottom: 0.3em;
-        margin-top: 1.8em;
-        margin-bottom: 0.6em;
-        /* PDF outline bookmark — level 1 */
+        font-size: 20pt;
+        font-weight: 900;
+        color: {TEAL};
+        border-bottom: 3px solid {GOLD};
+        padding-bottom: 0.25em;
+        margin-top: 1.6em;
+        margin-bottom: 0.5em;
         bookmark-level: 1;
         bookmark-label: content();
         prince-bookmark-level: 1;
         prince-bookmark-label: content();
         string-set: chapter-title content();
     }}
+
     h3 {{
-        font-size: 13pt;
-        color: #2a2a4e;
-        border-right: 4px solid #8b6914;
+        font-size: 15pt;
+        font-weight: 800;
+        color: {TEAL_M};
+        border-right: 5px solid {GOLD};
         padding-right: 0.5em;
-        margin-top: 1.2em;
-        margin-bottom: 0.4em;
+        margin-top: 1em;
+        margin-bottom: 0.35em;
     }}
+
+    /* Inline chapter heading from scraped <p class="b"> or <p class="head"> */
     .chapter-heading {{
-        font-size: 13pt;
-        font-weight: bold;
-        color: #1a1a2e;
+        font-size: 16pt;
+        font-weight: 900;
+        color: {RUST};
         text-align: center;
-        margin: 1.2em 0 0.5em;
-        border-top: 1px solid #ddd;
-        border-bottom: 1px solid #ddd;
-        padding: 0.3em 0;
+        margin: 1em 0 0.4em;
+        padding: 0.25em 0.5em;
+        border-top: 2px solid {GOLD};
+        border-bottom: 2px solid {GOLD};
+        background: #fdf8ee;
         string-set: chapter-title content();
     }}
 
-    /* ── TOC-BASED BOOKMARKS (dynamically generated) ── */
+    /* ═══════════════════════════════════════════════════════
+       TOC BOOKMARKS  (invisible anchors for PDF outline)
+       ═══════════════════════════════════════════════════════ */
     .toc-bookmark-anchor {{
         height: 0;
         overflow: hidden;
@@ -925,161 +1420,236 @@ def build_html(meta: dict, author_info: dict, pages: list[dict]) -> str:
     }}
     {toc_bm_css}
 
-    /* ── AUTHOR BIO ── */
+    /* ═══════════════════════════════════════════════════════
+       AUTHOR BIO
+       ═══════════════════════════════════════════════════════ */
     .author-bio {{
         font-size: 11pt;
-        color: #333;
-        line-height: 2.2;
-        background: #fafaf8;
-        border-right: 4px solid #8b6914;
-        padding: 0.8em 1em;
-        margin: 0.5em 0;
+        font-weight: 500;
+        color: #222;
+        line-height: 1.9;
+        background: #f9f7f2;
+        border-right: 5px solid {GOLD};
+        padding: 0.7em 0.9em;
+        margin: 0.4em 0;
     }}
-    .author-bio p {{ margin: 0.3em 0; }}
+    .author-bio p {{ margin: 0.25em 0; }}
 
-    /* No visible TOC is rendered — structure is exposed only via the PDF's
-       native outline/bookmark panel (WeasyPrint bookmark-level CSS below).
-       TOC-based bookmark classes are injected dynamically above. */
-
-    /* ── BODY TEXT ── */
-    .page-entry {{ margin-bottom: 0.8em; }}
+    /* ═══════════════════════════════════════════════════════
+       BODY TEXT  —  dense, bolder
+       ═══════════════════════════════════════════════════════ */
+    .page-entry {{
+        margin-bottom: 0;          /* no gap between page entries */
+    }}
     .page-text p {{
-        margin: 0.5em 0;
+        margin: 0.15em 0;          /* minimal vertical gap = more words per page */
         text-align: justify;
         text-justify: kashida;
-        orphans: 3;
-        widows: 3;
+        orphans: 2;
+        widows: 2;
+        font-weight: 500;
     }}
 
-    /* ── FOOTNOTES (hamesh) ── */
+    /* ═══════════════════════════════════════════════════════
+       FOOTNOTES (hamesh)
+       ═══════════════════════════════════════════════════════ */
     .hamesh {{
-        border-top: 1px solid #bbb;
-        margin-top: 1.5em;
-        padding-top: 0.5em;
-        font-size: 9.5pt;
-        color: #444;
-        line-height: 1.9;
+        border-top: 1px solid #ccc;
+        margin-top: 0.8em;
+        padding-top: 0.3em;
+        font-size: 9pt;
+        font-weight: 400;
+        color: #555;
+        line-height: 1.6;
     }}
     .hamesh p {{
-        margin: 0.1em 0;
+        margin: 0.05em 0;
         text-align: right;
     }}
     """
+    return css
 
-    parts = [
-        f'<!DOCTYPE html><html lang="ar" dir="rtl"><head>'
-        f'<meta charset="UTF-8">'
-        f'<style>{css}</style></head><body>'
-    ]
 
-    # ── COVER ──────────────────────────────────────────────────────────
-    scraped_date = datetime.date.today().strftime("%Y-%m-%d")
-    parts.append('<div class="cover">')
-    parts.append('<div class="cover-ornament">❦ ❦ ❦</div>')
-    parts.append(f'<h1>{_e(meta.get("title", "كتاب"))}</h1>')
-    rows = []
-    for label, key in [("المؤلف", "author"), ("الناشر", "publisher"),
-                        ("الطبعة", "edition"), ("عدد الأجزاء", "volumes")]:
-        if meta.get(key):
-            rows.append(f'<tr><td class="meta-label">{_e(label)}</td><td>{_e(meta[key])}</td></tr>')
-    if rows:
-        parts.append(f'<table class="meta-table">{"".join(rows)}</table>')
-    parts.append(f'<p class="source">المصدر: {_e(meta.get("url",""))} | تاريخ التحميل: {scraped_date}</p>')
-    parts.append('</div>')
+def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
+                      vol_num_ref: list) -> tuple[str, int]:
+    """
+    Return (html_fragment, updated_vol_num) for a single page dict.
+    vol_num_ref is a 1-element list used as a mutable int reference.
+    """
+    parts = []
+    i_dummy = None  # volume divider needs "not first page" guard handled by caller
+    pid = page.get("page_id")
+    vol_num = vol_num_ref[0]
 
-    # ── AUTHOR INFO ────────────────────────────────────────────────────
-    if author_info and not author_info.get("error"):
-        parts.append('<div class="section-front">')
-        parts.append('<h2>ترجمة المؤلف</h2>')
-        if author_info.get("bio"):
-            bio_html = "".join(
-                f"<p>{_e(l.strip())}</p>"
-                for l in author_info["bio"].splitlines() if l.strip()
+    # ── Inject TOC bookmark anchors for this page ──────────────────────
+    if pid and pid in toc_by_page:
+        for label, toc_lvl in toc_by_page[pid]:
+            if label:
+                parts.append(
+                    f'<div class="toc-bookmark-anchor toc-bm-{toc_lvl}">'
+                    f'{_e(label)}</div>'
+                )
+
+    parts.append('<div class="page-entry"><div class="page-text">')
+
+    paras = page.get("paragraphs")
+    if paras:
+        for para in paras:
+            ptype = para["type"]
+            if ptype == "hamesh":
+                parts.append('<div class="hamesh">')
+                for line in para["lines"]:
+                    if line.strip():
+                        parts.append(f'<p>{line.strip()}</p>')
+                parts.append('</div>')
+            elif ptype == "heading":
+                for line in para["lines"]:
+                    if line.strip():
+                        parts.append(f'<p class="chapter-heading">{line.strip()}</p>')
+            else:
+                for line in para["lines"]:
+                    if line.strip():
+                        parts.append(f'<p>{line.strip()}</p>')
+    else:
+        for chunk in page["text"].split("\n\n"):
+            if chunk.strip():
+                parts.append(f'<p>{_e(chunk.strip())}</p>')
+
+    parts.append('</div></div>')
+    return "".join(parts), vol_num
+
+
+def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path,
+                       flush_every: int = 50) -> None:
+    """
+    Stream-write the full HTML document to *out_path* one page at a time.
+    Memory usage is O(flush_every pages) instead of O(all pages).
+
+    pages_iter may be a list or any iterable of page dicts.
+    flush_every: write buffer to disk every N pages (default 50).
+    """
+    import datetime
+
+    css = _build_html_css(meta)
+
+    # Build page_id -> [(label, toc_level), ...] lookup
+    toc_flat = meta.get("toc_flat", [])
+    toc_by_page: dict = {}
+    for entry in toc_flat:
+        pid = entry.get("page_id")
+        if pid is not None:
+            toc_by_page.setdefault(pid, []).append(
+                (entry.get("label", ""), entry.get("level", 0))
             )
-            parts.append(f'<div class="author-bio">{bio_html}</div>')
-        if author_info.get("url"):
-            parts.append(f'<p style="font-size:8pt;color:#aaa">المصدر: {_e(author_info["url"])}</p>')
-        parts.append('</div>')
-
-    # ── BOOK PAGES — counter resets to 1 here ─────────────────────────
-    parts.append('<div class="section-text">')
-    parts.append('<h2>نص الكتاب</h2>')
 
     vol_starts_list = sorted(meta.get("volume_start_pages", []))
-    vol_num = 1
     vol_boundaries = set(vol_starts_list)
+    vol_num = [1]   # mutable reference
 
-    for i, page in enumerate(pages):
-        pid  = page.get("page_id")
+    scraped_date = datetime.date.today().strftime("%Y-%m-%d")
 
-        # volume divider
-        if pid and pid in vol_boundaries and i > 0:
-            parts.append('</div>')  # close prev section
-            parts.append(f'<div class="volume-divider"><h2>الجزء {_e(str(vol_num + 1))}</h2></div>')
-            parts.append('<div class="section">')
-            vol_num += 1
+    with open(out_path, "w", encoding="utf-8", buffering=1 << 20) as fh:  # 1 MB write buffer
+        # ── DOCTYPE + CSS ──────────────────────────────────────────────
+        fh.write(
+            f'<!DOCTYPE html><html lang="ar" dir="rtl"><head>'
+            f'<meta charset="UTF-8">'
+            f'<style>{css}</style></head><body>\n'
+        )
 
-        # ── Inject TOC bookmark anchors for this page ──────────────────
-        if pid and pid in toc_by_page:
-            for label, toc_lvl in toc_by_page[pid]:
-                if label:
-                    parts.append(
-                        f'<div class="toc-bookmark-anchor toc-bm-{toc_lvl}">'
-                        f'{_e(label)}</div>'
-                    )
+        # ── COVER ──────────────────────────────────────────────────────
+        fh.write('<div class="cover">\n')
+        fh.write('<div class="cover-ornament">❦ ❦ ❦</div>\n')
+        fh.write(f'<h1>{_e(meta.get("title", "كتاب"))}</h1>\n')
+        rows = []
+        for label, key in [("المؤلف", "author"), ("الناشر", "publisher"),
+                            ("الطبعة", "edition"), ("عدد الأجزاء", "volumes")]:
+            if meta.get(key):
+                rows.append(f'<tr><td class="meta-label">{_e(label)}</td>'
+                             f'<td>{_e(meta[key])}</td></tr>')
+        if rows:
+            fh.write(f'<table class="meta-table">{"".join(rows)}</table>\n')
+        fh.write(f'<p class="source">المصدر: {_e(meta.get("url",""))} | '
+                 f'تاريخ التحميل: {scraped_date}</p>\n')
+        fh.write('</div>\n')
 
-        parts.append('<div class="page-entry">')
-        parts.append('<div class="page-text">')
+        # ── AUTHOR INFO ────────────────────────────────────────────────
+        if author_info and not author_info.get("error"):
+            fh.write('<div class="section-front">\n')
+            fh.write('<h2>ترجمة المؤلف</h2>\n')
+            if author_info.get("bio"):
+                fh.write('<div class="author-bio">\n')
+                for line in author_info["bio"].splitlines():
+                    if line.strip():
+                        fh.write(f'<p>{_e(line.strip())}</p>\n')
+                fh.write('</div>\n')
+            if author_info.get("url"):
+                fh.write(f'<p style="font-size:8pt;color:#aaa">'
+                         f'المصدر: {_e(author_info["url"])}</p>\n')
+            fh.write('</div>\n')
 
-        paras = page.get("paragraphs")
-        if paras:
-            for para in paras:
-                ptype = para["type"]
-                if ptype == "hamesh":
-                    parts.append('<div class="hamesh">')
-                    for line in para["lines"]:
-                        if line.strip():
-                            parts.append(f'<p>{line.strip()}</p>')
-                    parts.append('</div>')
-                elif ptype == "heading":
-                    for line in para["lines"]:
-                        if line.strip():
-                            parts.append(f'<p class="chapter-heading">{line.strip()}</p>')
-                else:
-                    for line in para["lines"]:
-                        if line.strip():
-                            parts.append(f'<p>{line.strip()}</p>')
-        else:
-            for chunk in page["text"].split("\n\n"):
-                if chunk.strip():
-                    parts.append(f'<p>{_e(chunk.strip())}</p>')
+        # ── BOOK PAGES ─────────────────────────────────────────────────
+        fh.write('<div class="section-text">\n')
+        fh.write('<h2>نص الكتاب</h2>\n')
 
-        parts.append('</div></div>')
+        buf: list[str] = []
+        first_page = True
 
-    parts.append('</div>')
+        for page in pages_iter:
+            pid = page.get("page_id")
 
-    # NOTE: No visible TOC section is rendered here (per prompt_toc.txt).
-    # The PDF's native outline/bookmarks come from:
-    #   - h2 elements (bookmark-level 1): cover, author bio, book text
-    #   - .toc-bookmark-anchor elements (bookmark-level 2+): injected from
-    #     parsed TOC data at the correct page positions, preserving hierarchy.
-    # PDF readers expose this in their bookmarks / outline sidebar panel.
+            # volume divider
+            if pid and pid in vol_boundaries and not first_page:
+                buf.append('</div>\n')  # close current section
+                buf.append(f'<div class="volume-divider">'
+                            f'<h2>الجزء {_e(str(vol_num[0] + 1))}</h2></div>\n')
+                buf.append('<div class="section">\n')
+                vol_num[0] += 1
 
-    parts.append('</body></html>')
-    return "\n".join(parts)
+            frag, _ = _render_page_html(page, toc_by_page, vol_boundaries, vol_num)
+            buf.append(frag)
+            first_page = False
+
+            if len(buf) >= flush_every:
+                fh.write("".join(buf))
+                buf.clear()
+
+        if buf:
+            fh.write("".join(buf))
+
+        fh.write('</div>\n')   # close section-text
+        fh.write('</body></html>\n')
 
 
-def build_pdf(meta: dict, author_info: dict, pages: list[dict], out_path: str):
-    if WeasyprintHTML is None:
-        print("  [!] weasyprint not installed — skipping PDF, JSON/HTML still saved.")
-        html_str = build_html(meta, author_info, pages)
-        Path(out_path).with_suffix(".html").write_text(html_str, encoding="utf-8")
-        return
-    html_str = build_html(meta, author_info, pages)
-    # optionally save HTML alongside for debugging
+def build_pdf(meta: dict, author_info: dict, pages_iter, out_path: str,
+              flush_every: int = 50):
+    """
+    Build a PDF from *pages_iter* (list or generator of page dicts).
+
+    Strategy (memory-safe):
+      1. Stream-write HTML to <out_path>.html — O(flush_every) memory.
+      2. Hand WeasyPrint a file:// URL instead of a string — it can
+         parse/stream from disk rather than holding the whole HTML in RAM.
+      3. The intermediate HTML file is kept for debugging; delete it
+         manually if disk space is a concern.
+    """
     html_path = Path(out_path).with_suffix(".html")
-    html_path.write_text(html_str, encoding="utf-8")
-    WeasyprintHTML(string=html_str).write_pdf(out_path)
+
+    print(f"  [html] streaming HTML → {html_path} ...")
+    build_html_to_file(meta, author_info, pages_iter, html_path, flush_every=flush_every)
+    print(f"  [html] done ({html_path.stat().st_size // 1024} KB)")
+
+    if WeasyprintHTML is None:
+        print("  [!] weasyprint not installed — HTML saved, PDF skipped.")
+        return
+
+    import urllib.request
+    file_url = urllib.request.pathname2url(str(html_path.resolve()))
+    if not file_url.startswith("///"):
+        file_url = "//" + file_url  # ensure absolute file:// URL on Linux
+    file_url = "file:" + file_url
+
+    print(f"  [pdf] rendering via WeasyPrint (file URL) ...")
+    WeasyprintHTML(filename=str(html_path.resolve())).write_pdf(out_path)
     print(f"  [pdf] saved → {out_path}")
 
 
@@ -1178,7 +1748,8 @@ def process_book(session: requests.Session, book_id: int, out_dir: Path,
         print(f"[*] Scraping pages for book {book_id} (starting at page_id={first_page}) ...")
         prog = scrape_book_pages_resumable(
             session, book_id, book_dir,
-            start_page=first_page, limit=args.limit, delay=args.delay, force=args.force,
+            start_page=first_page, meta=meta, limit=args.limit, delay=args.delay,
+            force=args.force, workers=getattr(args, "workers", 8),
         )
         entry["status"] = prog["status"]
         entry["last_page_id"] = prog.get("last_page_id")
@@ -1192,17 +1763,26 @@ def process_book(session: requests.Session, book_id: int, out_dir: Path,
             return
 
     # ── assemble combined JSON ───────────────────────────────────────────
-    pages = load_pages_jsonl(book_dir / "pages.jsonl")
+    # Load pages into memory only for JSON export (one-time, then freed).
+    pages_path = book_dir / "pages.jsonl"
+    pages = load_pages_jsonl(pages_path)
     data = {"meta": meta, "author_info": author_info, "pages": pages}
     json_path = book_dir / f"book_{book_id}.json"
     atomic_write_json(json_path, data)
     print(f"  [json] saved → {json_path}  ({len(pages)} pages)")
 
+    # Free the in-memory page list before the PDF step — the PDF builder
+    # will stream pages directly from disk, so we don't need both copies.
+    del pages
+    import gc; gc.collect()
+
     # ── PDF ───────────────────────────────────────────────────────────────
     if not args.json_only:
         pdf_path = book_dir / f"book_{book_id}.pdf"
         print(f"[*] Building PDF for book {book_id} ...")
-        build_pdf(meta, author_info, pages, str(pdf_path))
+        # Stream pages from .jsonl — avoids holding all pages in RAM
+        build_pdf(meta, author_info, iter_pages_jsonl(pages_path), str(pdf_path),
+                  flush_every=getattr(args, "flush_every", 50))
 
     # Only mark "done" when scraping was actually performed and completed.
     # --pdf_only must never change the scraping status, so interrupted
@@ -1286,7 +1866,12 @@ def main():
     parser.add_argument("--book_ids", default=None, help="Comma-separated list of book IDs, e.g. 12762,667")
     parser.add_argument("--category_ids", default=None, help="Comma-separated list of category IDs, e.g. 13,33,40")
     parser.add_argument("--out_dir", default="./shamela_output", help="Root output directory")
-    parser.add_argument("--delay", type=float, default=1.0, help="Delay between requests (seconds)")
+    parser.add_argument("--delay", type=float, default=0.5,
+                        help="Base courtesy delay between requests in seconds (default 0.5; "
+                             "actual per-thread delay = delay × workers)")
+    parser.add_argument("--workers", type=int, default=8,
+                        help="Concurrent page-fetch threads (default 8; increase for speed, "
+                             "decrease if the server rate-limits you)")
     parser.add_argument("--start_page", type=int, default=1, help="First page ID to scrape (per book, if not resuming)")
     parser.add_argument("--limit", type=int, default=None, help="Max pages to scrape PER BOOK")
     parser.add_argument("--cf_clearance", default=None, help="Cloudflare cf_clearance cookie value")
@@ -1296,6 +1881,8 @@ def main():
     parser.add_argument("--refresh_categories", action="store_true", help="Re-fetch category book listings instead of using cached manifest copy")
     parser.add_argument("--max_books", type=int, default=None, help="Cap total number of books processed this run (testing)")
     parser.add_argument("--status", action="store_true", help="Print manifest status summary and exit (no scraping)")
+    parser.add_argument("--flush_every", type=int, default=50,
+                        help="Flush HTML buffer to disk every N pages during PDF build (lower = less RAM, default 50)")
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir)
