@@ -72,6 +72,17 @@ try:
 except ImportError:  # pdf building simply unavailable until installed
     WeasyprintHTML = None
 
+try:
+    import orjson as _orjson
+    def _fast_json(data, indent: bool = True) -> str:
+        opts = _orjson.OPT_APPEND_NEWLINE
+        if indent:
+            opts |= _orjson.OPT_INDENT_2
+        return _orjson.dumps(data, option=opts).decode()
+except ImportError:
+    def _fast_json(data, indent: bool = True) -> str:
+        return json.dumps(data, ensure_ascii=False, indent=2 if indent else None)
+
 # ─────────────────────────────────────────────────────────────────────────────
 BASE = "https://shamela.ws"
 HEADERS = {
@@ -108,7 +119,7 @@ def atomic_write_json(path, data):
     a half-written / corrupted progress or manifest file."""
     path = Path(path)
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.write_text(_fast_json(data), encoding="utf-8")
     tmp.replace(path)
 
 
@@ -1184,6 +1195,9 @@ def scrape_book_pages_resumable(
         pool = ThreadPoolExecutor(max_workers=workers)
         try:
             # Submit all fetches; pages already in html_cache skip the network
+            # Stagger only the first `workers` pages to debounce the initial
+            # burst — the equivalent of (i % workers) * stagger on *every*
+            # page would add minutes/hours of pure sleep for large books.
             future_to_pid: dict = {}
             for i, pid in enumerate(page_ids):
                 if pid in html_cache:
@@ -1191,8 +1205,9 @@ def scrape_book_pages_resumable(
                     html = html_cache.pop(pid)  # free memory as we go
                     f = pool.submit(lambda h=html, p=pid: (p, h, None))
                 else:
+                    s = (i % workers) * stagger if i < workers else 0
                     f = pool.submit(_fetch_one,
-                                    (session, book_id, pid, (i % workers) * stagger))
+                                    (session, book_id, pid, s))
                 future_to_pid[f] = pid
 
             # Collect results as they complete (any order), store in buffer
@@ -1229,7 +1244,7 @@ def scrape_book_pages_resumable(
                     if next_pid not in completed_set:
                         break
                     for pg in results_buf.pop(next_pid, []):
-                        pf.write(json.dumps(pg, ensure_ascii=False) + "\n")
+                        pf.write(_fast_json(pg, indent=False) + "\n")
                         count += 1
                     write_cursor += 1
                     flushed_any = True
@@ -2228,7 +2243,7 @@ def materialize_resolved_pages(meta: dict, pages_path: Path, resolved_path: Path
     count = 0
     with open(resolved_path, "w", encoding="utf-8") as out_fh:
         for page in resolve_book_headings(meta, iter_pages_jsonl(pages_path)):
-            out_fh.write(json.dumps(page, ensure_ascii=False) + "\n")
+            out_fh.write(_fast_json(page, indent=False) + "\n")
             count += 1
     return count
 
@@ -2768,12 +2783,12 @@ def main():
     parser.add_argument("--book_ids", default=None, help="Comma-separated list of book IDs, e.g. 12762,667")
     parser.add_argument("--category_ids", default=None, help="Comma-separated list of category IDs, e.g. 13,33,40")
     parser.add_argument("--out_dir", default="./shamela_output", help="Root output directory")
-    parser.add_argument("--delay", type=float, default=0.5,
-                        help="Base courtesy delay between requests in seconds (default 0.5; "
-                             "actual per-thread delay = delay × workers)")
-    parser.add_argument("--workers", type=int, default=8,
-                        help="Concurrent page-fetch threads (default 8; increase for speed, "
-                             "decrease if the server rate-limits you)")
+    parser.add_argument("--delay", type=float, default=0.25,
+                        help="Base courtesy delay in seconds (default 0.25; "
+                             "stagger only applied to first-batch pages)")
+    parser.add_argument("--workers", type=int, default=16,
+                        help="Concurrent page-fetch threads (default 16; "
+                             "increase for speed, decrease if rate-limited)")
     parser.add_argument("--start_page", type=int, default=1, help="First page ID to scrape (per book, if not resuming)")
     parser.add_argument("--limit", type=int, default=None, help="Max pages to scrape PER BOOK")
     parser.add_argument("--cf_clearance", default=None, help="Cloudflare cf_clearance cookie value")
