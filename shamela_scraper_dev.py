@@ -1691,6 +1691,21 @@ def _normalize_ar(s: str) -> str:
     return s
 
 
+def _has_extra_content(line_html: str, norm_label: str) -> bool:
+    """
+    Return True if the raw line has content beyond what the TOC label covers —
+    e.g. a footnote reference (١) or extra words that normalization stripped.
+    Used to decide whether to keep (not suppress) a matched heading line.
+    """
+    plain = _plain_text(line_html).strip()
+    # Strip only diacritics (not paren groups) for a lightweight check
+    plain_no_tashkeel = _TASHKEEL_RE.sub("", plain).strip()
+    norm_label_plain = _TASHKEEL_RE.sub("", norm_label).strip()
+    # If the plain text (with parens intact) is longer than the bare label,
+    # there is extra content the reader needs to see.
+    return len(plain_no_tashkeel) > len(norm_label_plain)
+
+
 def _bracket_stripped(line_html: str) -> str | None:
     plain = _plain_text(line_html).strip()
     if plain.startswith("[") and plain.endswith("]"):
@@ -1854,6 +1869,15 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
         if found_span:
             start, end = found_span
             positions = [(flat_lines[i][0], flat_lines[i][1]) for i in range(start, end)]
+            # Upgrade keep_line if the raw line has content normalization stripped
+            # (e.g. footnote refs like (١)) — those must stay visible in the body.
+            if not keep_line:
+                for i in range(start, end):
+                    pi, li, _ = flat_lines[i]
+                    raw_line = (paras[pi].get("lines") or [])[li] if pi < len(paras) else ""
+                    if _has_extra_content(raw_line, norm_label):
+                        keep_line = True
+                        break
             if start > cursor and cursor == 0:
                 # Body text appears before the first matched heading on this
                 # page — hoist both pending parents and this entry to page-top
@@ -1997,7 +2021,15 @@ def resolve_book_headings(meta: dict, pages_iter):
         # Also suppress any plain-text line whose normalized form matches an
         # already-resolved heading label — these are unbracketed echoes of
         # bracket headings (e.g. "الأصْلُ الثَّانِي" after "[الأصل الثاني...]").
+        # Exception: don't echo-suppress lines that belong to a keep_line heading
+        # (those lines have extra content, e.g. footnote refs, that must stay visible).
         resolved_norms: set[str] = {_normalize_ar(h["text"]) for h in located}
+        keep_line_positions: set[tuple[int, int]] = {
+            tuple(pos)
+            for h in located
+            if h.get("keep_line")
+            for pos in h.get("positions", [])
+        }
         echo_suppressed: list[list[int]] = []
         paras_here = page.get("paragraphs") or []
         for pi, para in enumerate(paras_here):
@@ -2005,6 +2037,8 @@ def resolve_book_headings(meta: dict, pages_iter):
                 continue
             for li, line in enumerate(para.get("lines", [])):
                 if (pi, li) in consumed_positions:
+                    continue
+                if (pi, li) in keep_line_positions:
                     continue
                 if _normalize_ar(line) in resolved_norms:
                     consumed_positions.add((pi, li))
