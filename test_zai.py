@@ -756,19 +756,27 @@ def _scan_pages_jsonl(pages_path: Path) -> tuple[int | None, int]:
 
 
 def _fetch_one(args_tuple) -> tuple[int, str | None, str | None]:
-    """Worker target: (session, book_id, page_id, stagger_delay) → (page_id, html, err)."""
+    """Worker target: (session, book_id, page_id, stagger_delay) → (page_id, html, err).
+    Retries up to 3 times with backoff on transient errors (5xx, connection).
+    """
     session, book_id, page_id, stagger = args_tuple
     if stagger > 0:
         time.sleep(stagger)
     url = f"{BASE}/book/{book_id}/{page_id}"
-    try:
-        resp = session.get(url, timeout=25)
-        if resp.status_code == 403:
-            return page_id, None, "403 Forbidden — try --cf_clearance"
-        resp.raise_for_status()
-        return page_id, resp.text, None
-    except requests.RequestException as e:
-        return page_id, None, str(e)
+    last_err: str | None = None
+    for attempt in range(1, 4):
+        try:
+            resp = session.get(url, timeout=25)
+            if resp.status_code == 403:
+                return page_id, None, "403 Forbidden — try --cf_clearance"
+            resp.raise_for_status()
+            return page_id, resp.text, None
+        except requests.RequestException as e:
+            last_err = str(e)
+            if attempt < 3:
+                wait = attempt * 2
+                time.sleep(wait)
+    return page_id, None, last_err
 
 
 def _chain_walk(
@@ -2178,11 +2186,19 @@ def resolve_book_headings(meta: dict, pages_iter):
                 and num.count(".") == deepest_number.count(".") + 1
             )
 
+        # Collect normalized texts of all already-resolved TOC headings so
+        # we can skip bracket headings that duplicate them.  Prevents a TOC
+        # entry whose label isn't found in the text (implicit) from being
+        # echoed a second time via bracket auto-detection of the same text.
+        located_norms: set[str] = {_normalize_ar(h["text"]) for h in located}
+
         auto_n = 0
         resolved: list[dict] = list(located)
         for bh in bracket_headings:
             pos = (bh["para_idx"], bh["line_idx"])
             if pos in consumed_positions:
+                continue
+            if _normalize_ar(bh["text"]) in located_norms:
                 continue
             auto_n += 1
             auto_level = min(deepest_level + 1, 6)
