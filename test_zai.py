@@ -292,16 +292,24 @@ def fetch_book_meta(session: requests.Session, book_id: int) -> dict:
         raw = nass.get_text("\n", strip=True)
         for line in raw.splitlines():
             line = line.strip()
-            if line.startswith("الكتاب:"):
-                meta["title"] = line.replace("الكتاب:", "").strip()
-            elif line.startswith("المؤلف:"):
-                meta["author"] = line.replace("المؤلف:", "").strip()
-            elif line.startswith("الناشر:"):
-                meta["publisher"] = line.replace("الناشر:", "").strip()
-            elif line.startswith("الطبعة:"):
-                meta["edition"] = line.replace("الطبعة:", "").strip()
-            elif line.startswith("عدد الأجزاء:"):
-                meta["volumes"] = line.replace("عدد الأجزاء:", "").strip()
+            parts = line.split(":", 1)
+            if len(parts) < 2:
+                continue
+            label, value = parts[0].strip(), parts[1].strip()
+            if label == "الكتاب":
+                meta["title"] = value
+            elif label == "المؤلف":
+                meta["author"] = value
+            elif label == "الناشر":
+                meta["publisher"] = value
+            elif label == "الطبعة":
+                meta["edition"] = value
+            elif label == "عدد الأجزاء":
+                meta["volumes"] = value
+            elif label == "عدد الصفحات":
+                meta["pages"] = value
+            elif label == "المحقق":
+                meta["editor"] = value
 
     # ── author page link ────────────────────────────────────────────────
     author_link = soup.find("a", href=re.compile(r"/author/\d+"))
@@ -2062,7 +2070,7 @@ def resolve_book_headings(meta: dict, pages_iter):
 
     sorted_toc = sorted(
         [e for e in toc_flat if e.get("page_id") is not None],
-        key=lambda e: (e["page_id"], e.get("level", 0))
+        key=lambda e: e["page_id"]
     )
     toc_idx = 0
     breadcrumb_stack: list[tuple[str, str, int]] = []
@@ -2555,6 +2563,19 @@ def process_book(session: requests.Session, book_id: int, out_dir: Path,
     book_id = int(book_id)
     entry = manifest.book(book_id)
 
+    # ── --pdf_only: load cached data from disk, no network ─────────────
+    if args.pdf_only and entry.get("dir"):
+        bd = Path(out_dir) / entry["dir"]
+        meta = load_json(bd / "meta.json")
+        author_info = load_json(bd / "author_info.json")
+        if meta and author_info is not None:
+            book_dir = bd
+            print(f"[*] Using cached data for book {book_id} ({meta.get('title','?')})")
+            # Jump straight to heading resolution + PDF (skip network)
+            _build_book_outputs(meta, author_info, book_dir, book_id, args, entry, manifest)
+            return
+        print(f"  [!] Cached data incomplete for book {book_id}, falling back to network")
+
     if entry.get("status") == "done" and not args.force and not args.pdf_only:
         print(f"[skip] book {book_id} ({entry.get('title','')}) — already done")
         return
@@ -2620,7 +2641,12 @@ def process_book(session: requests.Session, book_id: int, out_dir: Path,
             print(f"    re-run the same command later to resume from page_id={prog.get('next_page_id')}")
             return
 
-    # ── resolve TOC ↔ content heading alignment ONCE, persist it ─────────
+    _build_book_outputs(meta, author_info, book_dir, book_id, args, entry, manifest)
+
+
+def _build_book_outputs(meta: dict, author_info: dict, book_dir: Path,
+                        book_id: int, args, entry: dict, manifest: Manifest) -> None:
+    """Heading resolution → combined JSON → PDF (shared by scrape and --pdf_only paths)."""
     pages_path = book_dir / "pages.jsonl"
     resolved_path = book_dir / "pages_resolved.jsonl"
     print(f"[*] Resolving headings for book {book_id} ...")
