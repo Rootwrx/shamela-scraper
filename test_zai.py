@@ -2304,13 +2304,16 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
         if h.get("auto"):
             nh_class = "auto"
             label_text = _e(h["text"])
+            bm_class = ""
         elif h.get("implicit"):
             nh_class = "implicit"
             label_text = f'{h["number"]}. {_e(h["text"])}'
+            bm_class = f' toc-bm-{h["level"]}'
         else:
             nh_class = h["level"]
             label_text = f'{h["number"]}. {_e(h["text"])}'
-        return (f'<p class="toc-numbered-heading toc-nh-{nh_class} toc-bm-{h["level"]}">'
+            bm_class = f' toc-bm-{h["level"]}'
+        return (f'<p class="toc-numbered-heading toc-nh-{nh_class}{bm_class}">'
                 f'{label_text}</p>\n')
 
     entry_open = [False]
