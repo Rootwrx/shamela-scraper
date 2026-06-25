@@ -2303,11 +2303,13 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
     def _heading_html(h: dict) -> str:
         if h.get("auto"):
             nh_class = "auto"
+            label_text = _e(h["text"])
         elif h.get("implicit"):
             nh_class = "implicit"
+            label_text = f'{h["number"]}. {_e(h["text"])}'
         else:
             nh_class = h["level"]
-        label_text = f'{h["number"]}. {_e(h["text"])}'
+            label_text = f'{h["number"]}. {_e(h["text"])}'
         return (f'<p class="toc-numbered-heading toc-nh-{nh_class} toc-bm-{h["level"]}">'
                 f'{label_text}</p>\n')
 
