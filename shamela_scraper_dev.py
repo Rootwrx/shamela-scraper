@@ -245,17 +245,65 @@ def fetch_book_meta(session: requests.Session, book_id: int) -> dict:
         meta["author_url"] = BASE + author_link["href"] if author_link["href"].startswith("/") else author_link["href"]
         meta["author_id"] = re.search(r"/author/(\d+)", author_link["href"]).group(1)
 
-    # ── TOC: prefer s-nav (deep nested tree from first content page) ───
-    # The betaka-index on the book home page often only lists bare page numbers
-    # (e.g. ٩٩٩, ١٠٠٠) for multi-volume works.  The real chapter/section tree
-    # lives in the .s-nav sidebar that appears on every content page.
-    # Strategy:
-    #   1. Try betaka-index first.
-    #   2. If it looks like it has real chapter labels (not just bare numbers),
-    #      use it as-is.
-    #   3. Otherwise, fetch the first content page and extract .s-nav > ul.
-    betaka = soup.find("div", class_="betaka-index")
-    top_ul = betaka.find("ul", recursive=False) if betaka else None
+    # ── TOC: parse from the book home page (fully expanded tree) ──────
+    # CRITICAL INSIGHT: Shamela's [+] expand buttons are lazy-loaded.
+    # On the book HOME page (/book/<id>), the "فهرس الموضوعات" section
+    # renders the COMPLETE TOC tree with ALL [+] children already present
+    # as nested <ul> elements in the server-rendered HTML.
+    #
+    # On CONTENT pages (/book/<id>/<page>), the "فصول الكتاب" s-nav sidebar
+    # shows [+] entries but their child <ul>s are EMPTY — children are
+    # injected by JavaScript when the user clicks [+].  The scraper never
+    # clicks, so it gets an incomplete tree.  This caused sub-sections
+    # (e.g. 4.6.1) to appear under the wrong parent (e.g. 4.5) because
+    # the whole 4.6 branch was missing from the TOC.
+    #
+    # Fix: always extract the TOC from the home page using multiple fallback
+    # selectors that cover the known Shamela HTML variants:
+    #   1. div.betaka-index > ul        (classic layout)
+    #   2. h4 "فهرس الموضوعات" → next ul (new layout)
+    #   3. div with id containing "fihris" or "index"
+    # Only fall back to the content-page s-nav when the home page yields
+    # nothing useful (absent or bare page-number labels only).
+
+    def _find_home_page_toc_ul(soup_obj):
+        """Try all known selectors for the fully-expanded TOC on the home page."""
+        # 1. Classic betaka-index div
+        betaka = soup_obj.find("div", class_="betaka-index")
+        if betaka:
+            ul = betaka.find("ul", recursive=False)
+            if ul:
+                return ul
+
+        # 2. New layout: h4 containing "فهرس" followed by a ul sibling
+        for heading in soup_obj.find_all(["h3", "h4", "h5"]):
+            if "فهرس" in heading.get_text():
+                # Look for the next <ul> sibling (may be wrapped in a div)
+                for sib in heading.next_siblings:
+                    if not hasattr(sib, "name"):
+                        continue
+                    if sib.name == "ul":
+                        return sib
+                    if sib.name in ("div", "section"):
+                        ul = sib.find("ul")
+                        if ul:
+                            return ul
+                    if sib.name in ("h3", "h4", "h5"):
+                        break  # hit next section header, stop
+
+        # 3. Any div whose id or class suggests an index/fihris
+        for div in soup_obj.find_all("div"):
+            cls = " ".join(div.get("class", []))
+            did = div.get("id", "")
+            if any(k in cls.lower() or k in did.lower()
+                   for k in ("fihris", "index", "toc", "contents")):
+                ul = div.find("ul")
+                if ul:
+                    return ul
+
+        return None
+
+    top_ul = _find_home_page_toc_ul(soup)
     toc_tree = parse_toc_tree(top_ul)
 
     def _toc_looks_bare(tree: list[dict]) -> bool:
@@ -270,9 +318,9 @@ def fetch_book_meta(session: requests.Session, book_id: int) -> dict:
         return bare >= len(flat) * 0.8   # 80 %+ bare → treat as bare
 
     if _toc_looks_bare(toc_tree):
-        # Try to get the rich s-nav TOC from the first content page
-        first_content_url = None
-        # Use volume_start_pages hint if we already have it, else use /1
+        # Home page yielded nothing useful (absent or volume-selector only).
+        # Fall back to s-nav on first content page — best-effort only;
+        # [+] children will still be missing from expandable entries.
         if meta.get("volume_start_pages"):
             first_content_url = f"{BASE}/book/{book_id}/{meta['volume_start_pages'][0]}"
         else:
@@ -1702,6 +1750,17 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
     Anchor TOC entries to inline body lines when the label appears in the
     text (``اسمُه:`` vs TOC ``اسمه``).  Unmatched entries and partial
     substring matches that sit after other page content go to the page top.
+
+    Key ordering invariant: TOC entries must appear in the rendered output in
+    the same order they appear in the TOC (parent before child).  When a
+    parent entry has no text match (pending) but its child IS matched, the
+    pending parents are placed inline *just before* the child — not at
+    top_slot — so they render in the correct parent→child order.
+
+    The page_top / top_slot mechanism is reserved for entries that precede
+    all body text (cursor == 0 when they flush AND the child also starts at
+    cursor == 0), or for entries that could not be matched at all and whose
+    pending flush was triggered by the end of the toc_pool loop.
     """
     flat_lines: list[tuple[int, int, str]] = []
     for pi, para in enumerate(paras or []):
@@ -1724,7 +1783,8 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
         resolved.append(entry)
         top_slot += 1
 
-    def _flush_pending():
+    def _flush_pending_as_top():
+        """Flush pending entries to page-top (truly unmatched, end-of-pool)."""
         nonlocal pending
         for label, level, number in pending:
             _append_top({
@@ -1734,13 +1794,57 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
             })
         pending = []
 
+    def _flush_pending_before_child(child_positions: list[tuple[int, int]]):
+        """
+        Flush pending (unmatched parent) entries inline, positioned just
+        before the child's first line.  This keeps parent→child order in the
+        rendered document even when the parent text was never present on the
+        page (e.g. it was a Shamela [+] collapsible toggle, not real text).
+
+        If the child itself is at the very start of the page (first real
+        line, cursor == 0) we use top_slot so that ALL pre-body headings
+        cluster together at the top — but only when no body text has been
+        consumed yet.
+        """
+        nonlocal pending, top_slot
+        if not pending:
+            return
+        child_pi, child_li = child_positions[0]
+        # If the child is at the page top (no body lines consumed before it),
+        # treat parents as top-slot entries too — they'll render before the child.
+        if cursor == 0 and child_pi == flat_lines[0][0] and child_li == flat_lines[0][1]:
+            for label, level, number in pending:
+                _append_top({
+                    "text": label, "level": level, "number": number,
+                    "matched": False, "auto": False, "implicit": True,
+                    "keep_line": False, "suppress": [],
+                })
+        else:
+            # Place parents inline just before the child using a synthetic
+            # sub-line index so sorting puts them immediately before (child_li - 0.5
+            # is not an int, so we use child_li with a fractional trick via a
+            # dedicated "before_child" flag handled in the sort key).
+            # Simpler: give them the same (pi, li) as the child but mark
+            # "before_child=True"; the render sort will place them first.
+            for idx, (label, level, number) in enumerate(pending):
+                resolved.append({
+                    "positions": [(child_pi, child_li)],
+                    "text": label, "level": level, "number": number,
+                    "matched": False, "auto": False, "implicit": True,
+                    "keep_line": False, "suppress": [],
+                    "at_page_top": False,
+                    "before_child": True,   # sentinel: render before same-position child
+                    "_before_child_slot": idx,
+                })
+        pending = []
+
     for label, level, number in toc_pool:
         norm_label = _normalize_ar(label)
         found_span, keep_line = _find_label_in_lines(norm_label, flat_lines, cursor)
         if found_span:
             start, end = found_span
             positions = [(flat_lines[i][0], flat_lines[i][1]) for i in range(start, end)]
-            _flush_pending()
+            _flush_pending_before_child(positions)
             if start > cursor:
                 # There are unmatched body lines before this match — the TOC
                 # heading titles the whole page so hoist it to the top.
@@ -1762,7 +1866,7 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
         else:
             pending.append((label, level, number))
 
-    _flush_pending()
+    _flush_pending_as_top()
     return resolved
 
 
@@ -1843,6 +1947,7 @@ def resolve_book_headings(meta: dict, pages_iter):
         # already-resolved heading label — these are unbracketed echoes of
         # bracket headings (e.g. "الأصْلُ الثَّانِي" after "[الأصل الثاني...]").
         resolved_norms: set[str] = {_normalize_ar(h["text"]) for h in located}
+        echo_suppressed: list[list[int]] = []
         paras_here = page.get("paragraphs") or []
         for pi, para in enumerate(paras_here):
             if para.get("type") == "hamesh":
@@ -1852,6 +1957,7 @@ def resolve_book_headings(meta: dict, pages_iter):
                     continue
                 if _normalize_ar(line) in resolved_norms:
                     consumed_positions.add((pi, li))
+                    echo_suppressed.append([pi, li])
 
         deepest_level = breadcrumb_stack[-1][2] if breadcrumb_stack else -1
         deepest_number = breadcrumb_stack[-1][0] if breadcrumb_stack else "0"
@@ -1876,6 +1982,7 @@ def resolve_book_headings(meta: dict, pages_iter):
         resolved.sort(key=lambda h: h["positions"][0])
 
         page["resolved_headings"] = resolved
+        page["echo_suppressed_positions"] = echo_suppressed  # render path uses this
         page["unanchored_toc_entries"] = [
             {"label": h["text"], "level": h["level"], "number": h["number"]}
             for h in resolved if h.get("implicit")
@@ -1916,7 +2023,10 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
         )
 
     paras = page.get("paragraphs")
-    heading_by_start: dict[tuple[int, int], dict] = {}
+    # heading_by_start: position → ordered list of headings at that position.
+    # A position can hold multiple headings when an unmatched parent is placed
+    # "before_child" at the same (pi, li) as its matched child.
+    heading_by_start: dict[tuple[int, int], list[dict]] = {}
     suppressed_positions: set[tuple[int, int]] = set()
 
     page_start_headings: list[dict] = []
@@ -1927,9 +2037,20 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
         if h.get("at_page_top"):
             page_start_headings.append(h)
         else:
-            heading_by_start[(pi, li)] = h
+            heading_by_start.setdefault((pi, li), []).append(h)
         for pos in h["positions"][1:]:
             suppressed_positions.add(tuple(pos))
+
+    # Echo-suppressed: plain-text lines that duplicate a resolved heading label
+    for pos in page.get("echo_suppressed_positions") or []:
+        suppressed_positions.add(tuple(pos))
+
+    # Sort each position bucket: before_child parents first (by slot), then child
+    for pos, hlist in heading_by_start.items():
+        hlist.sort(key=lambda h: (
+            0 if h.get("before_child") else 1,
+            h.get("_before_child_slot", 0),
+        ))
 
     def _heading_html(h: dict) -> str:
         if h.get("auto"):
@@ -1974,10 +2095,16 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
             for li, line in enumerate(para["lines"]):
                 if not line.strip():
                     continue
-                heading = heading_by_start.get((pi, li))
-                if heading:
-                    parts.append(_heading_html(heading))
-                    if not heading.get("keep_line"):
+                headings_here = heading_by_start.get((pi, li))
+                if headings_here:
+                    for heading in headings_here:
+                        parts.append(_heading_html(heading))
+                    # Skip the source line unless the last real (non-before_child) heading wants it
+                    last_real = next(
+                        (h for h in reversed(headings_here) if not h.get("before_child")),
+                        None
+                    )
+                    if last_real is None or not last_real.get("keep_line"):
                         continue
                 if (pi, li) in suppressed_positions:
                     continue
