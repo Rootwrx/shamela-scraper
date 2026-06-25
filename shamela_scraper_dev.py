@@ -667,7 +667,8 @@ def _scan_pages_jsonl(pages_path: Path) -> tuple[int | None, int]:
                     continue
                 lines += 1
                 try:
-                    pid = json.loads(line).get("page_id")
+                    rec = json.loads(line)
+                    pid = rec.get("url_page_id") or rec.get("page_id")
                 except Exception:
                     pid = None
                 if isinstance(pid, int) and (max_id is None or pid > max_id):
@@ -1123,6 +1124,14 @@ def scrape_book_pages_resumable(
                     continue
 
                 page_data = parse_page_html(html)
+                # Stamp the Shamela URL sequence ID (pid_result) onto every
+                # sub-page so resolve_book_headings can compare against the
+                # same ID space used by the TOC.  The page_id field from
+                # data-page-id is the *printed* page number and lives in a
+                # different namespace — matching TOC url-IDs against printed
+                # page numbers causes headings to land on the wrong pages.
+                for pg in page_data:
+                    pg["url_page_id"] = pid_result
                 results_buf[pid_result] = page_data
                 completed_set.add(pid_result)
 
@@ -1844,17 +1853,22 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
         if found_span:
             start, end = found_span
             positions = [(flat_lines[i][0], flat_lines[i][1]) for i in range(start, end)]
-            _flush_pending_before_child(positions)
-            if start > cursor:
-                # There are unmatched body lines before this match — the TOC
-                # heading titles the whole page so hoist it to the top.
-                # Suppress the matched bracket line (heading text already in label).
+            if start > cursor and cursor == 0:
+                # Body text appears before the first matched heading on this
+                # page — hoist both pending parents and this entry to page-top
+                # so they title the whole page in the correct parent→child order.
+                _flush_pending_as_top()
                 _append_top({
                     "text": label, "level": level, "number": number,
                     "matched": True, "auto": False, "implicit": False,
                     "keep_line": False, "suppress": list(positions),
                 })
             else:
+                # cursor > 0: a prior heading already claimed the page top.
+                # This is a sibling heading found mid-page after its predecessor's
+                # content — keep it inline so content flows between siblings.
+                # Also covers start == cursor (heading right at current position).
+                _flush_pending_before_child(positions)
                 suppress = [] if keep_line else list(positions)
                 resolved.append({
                     "positions": positions, "text": label, "level": level,
@@ -1867,6 +1881,38 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
             pending.append((label, level, number))
 
     _flush_pending_as_top()
+
+    # ── Post-pass: fix parent/child ordering when a matched heading was placed
+    # inline at position (first_line) but its children ended up at page-top.
+    # This happens when a TOC parent spans the first N paragraphs (matched,
+    # start==cursor==0 → goes inline) but its child has no text match (→ top).
+    # Page-top headings render before ALL inline content, so the child would
+    # appear before the parent in the PDF.  Fix: any inline heading anchored
+    # at the very first body line gets promoted to page-top, placed before its
+    # page-top children.
+    if flat_lines and any(h.get("at_page_top") for h in resolved):
+        first_pi, first_li, _ = flat_lines[0]
+        promoted = []
+        remaining = []
+        for h in resolved:
+            if (not h.get("at_page_top") and not h.get("before_child")
+                    and h["positions"][0] == (first_pi, first_li)):
+                promoted.append(h)
+            else:
+                remaining.append(h)
+        if promoted:
+            n = len(promoted)
+            # Shift existing top-slot li values up by n to make room
+            for h in remaining:
+                if h.get("at_page_top"):
+                    pi, li = h["positions"][0]
+                    h["positions"] = [(pi, li + n)]
+            for slot, h in enumerate(promoted):
+                h["positions"] = [(0, slot)]
+                h["at_page_top"] = True
+                h["suppress"] = []
+            resolved = promoted + remaining
+
     return resolved
 
 
@@ -1903,7 +1949,11 @@ def resolve_book_headings(meta: dict, pages_iter):
     counters = [0] * 20
 
     for page in pages_iter:
-        pid = page.get("page_id")
+        # url_page_id is the Shamela URL sequence ID (same namespace as TOC
+        # page_id).  page_id is the printed page number from data-page-id —
+        # a different namespace that must NOT be used for TOC matching.
+        # Fall back to page_id only for legacy data that pre-dates this fix.
+        pid = page.get("url_page_id") or page.get("page_id")
         page_toc_new: list[tuple[str, int, str]] = []
 
         if pid is not None:
