@@ -1672,8 +1672,10 @@ def _build_html_css(meta: dict) -> str:
 
 
 def _plain_text(html_frag: str) -> str:
-    """Strip HTML tags from a fragment for text comparison."""
-    return re.sub(r'<[^>]+>', '', html_frag)
+    """Strip HTML tags and unescape HTML entities from a fragment for text comparison."""
+    import html as _html_mod
+    stripped = re.sub(r'<[^>]+>', '', html_frag)
+    return _html_mod.unescape(stripped)
 
 
 _BRACKET_STRIP_CHARS = "[]（）()「」【】《》〈〉"
@@ -1691,26 +1693,10 @@ def _normalize_ar(s: str) -> str:
     return s
 
 
-def _has_extra_content(line_html: str, norm_label: str) -> bool:
-    """
-    Return True if the raw line has content beyond what the TOC label covers —
-    e.g. a footnote reference (١) or extra words that normalization stripped.
-    Used to decide whether to keep (not suppress) a matched heading line.
-    """
-    plain = _plain_text(line_html).strip()
-    # Strip only diacritics (not paren groups) for a lightweight check
-    plain_no_tashkeel = _TASHKEEL_RE.sub("", plain).strip()
-    norm_label_plain = _TASHKEEL_RE.sub("", norm_label).strip()
-    # If the plain text (with parens intact) is longer than the bare label,
-    # there is extra content the reader needs to see.
-    return len(plain_no_tashkeel) > len(norm_label_plain)
-
-
 def _bracket_stripped(line_html: str) -> str | None:
     plain = _plain_text(line_html).strip()
     if plain.startswith("[") and plain.endswith("]"):
-        import html as _html_mod
-        return _html_mod.unescape(plain.strip(_BRACKET_STRIP_CHARS).strip())
+        return plain.strip(_BRACKET_STRIP_CHARS).strip()
     return None
 
 
@@ -1735,12 +1721,34 @@ def _label_words(norm_label: str) -> list[str]:
     return [w for w in norm_label.split() if len(w) >= 2]
 
 
+def _has_extra_content(line_html: str, norm_label: str) -> bool:
+    """
+    Return True if the raw page line has content beyond what the TOC label
+    covers — e.g. a footnote reference (١) or extra words that normalization
+    stripped via _PAREN_GROUP_RE or tashkeel removal.
+
+    Comparison is done on tashkeel-stripped plain text WITHOUT removing
+    parenthesised groups, so "(١)" still counts as extra content.
+    Bracket chars and edge punctuation are stripped to avoid false positives
+    on lines like "[عنوان]" where the brackets are the only "extra" content.
+    """
+    plain = _plain_text(line_html).strip()
+    # Strip the same edge chars _normalize_ar strips (brackets, punctuation)
+    # but keep parenthesised groups intact so "(١)" is still detected.
+    plain_stripped = plain.strip(_BRACKET_STRIP_CHARS + " :،ـ")
+    plain_no_tashkeel = _TASHKEEL_RE.sub("", plain_stripped).strip()
+    norm_label_plain  = _TASHKEEL_RE.sub("", norm_label).strip()
+    return len(plain_no_tashkeel) > len(norm_label_plain)
+
+
 def _find_label_in_lines(norm_label: str, flat_lines: list[tuple[int, int, str]],
                          cursor: int) -> tuple[tuple[int, int] | None, bool]:
     """
     Find where a TOC label appears in page text.
     Returns (start, end) line span and keep_line (True when the matched line
     carries extra body text beyond the TOC label — show both heading and line).
+    keep_line is always False here; the caller upgrades it via _has_extra_content
+    after receiving the match.
     """
     if not norm_label:
         return None, False
@@ -1821,26 +1829,36 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
 
     def _flush_pending_before_child(child_positions: list[tuple[int, int]]):
         """
-        Flush pending (unmatched parent) entries, positioning them just before
-        the child that triggered the flush.
+        Flush pending (unmatched parent) entries inline, positioned just
+        before the child's first line.  This keeps parent→child order in the
+        rendered document even when the parent text was never present on the
+        page (e.g. it was a Shamela [+] collapsible toggle, not real text).
 
-        If the child is at the page top (first real line, cursor == 0) we use
-        top_slot so that all pre-body headings cluster together at the top.
-
-        If the child is mid-page we still send the parents to page-top — they
-        have no text match on this page and belong at the top as section titles,
-        not buried mid-page before an arbitrary sibling's position.
+        If the child itself is at the very start of the page (first real
+        line, cursor == 0) we use top_slot so that ALL pre-body headings
+        cluster together at the top — but only when no body text has been
+        consumed yet.
         """
         nonlocal pending, top_slot
         if not pending:
             return
         child_pi, child_li = child_positions[0]
-        at_first_line = (cursor == 0
-                         and child_pi == flat_lines[0][0]
-                         and child_li == flat_lines[0][1])
-        if at_first_line:
-            # Child is the very first body content — use before_child inline
-            # so the parent heading renders immediately above the child heading.
+        # If the child is at the page top (no body lines consumed before it),
+        # treat parents as top-slot entries too — they'll render before the child.
+        if cursor == 0 and child_pi == flat_lines[0][0] and child_li == flat_lines[0][1]:
+            for label, level, number in pending:
+                _append_top({
+                    "text": label, "level": level, "number": number,
+                    "matched": False, "auto": False, "implicit": True,
+                    "keep_line": False, "suppress": [],
+                })
+        else:
+            # Place parents inline just before the child using a synthetic
+            # sub-line index so sorting puts them immediately before (child_li - 0.5
+            # is not an int, so we use child_li with a fractional trick via a
+            # dedicated "before_child" flag handled in the sort key).
+            # Simpler: give them the same (pi, li) as the child but mark
+            # "before_child=True"; the render sort will place them first.
             for idx, (label, level, number) in enumerate(pending):
                 resolved.append({
                     "positions": [(child_pi, child_li)],
@@ -1848,18 +1866,8 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
                     "matched": False, "auto": False, "implicit": True,
                     "keep_line": False, "suppress": [],
                     "at_page_top": False,
-                    "before_child": True,
+                    "before_child": True,   # sentinel: render before same-position child
                     "_before_child_slot": idx,
-                })
-        else:
-            # Child is mid-page — send unmatched parents to page-top instead.
-            # Placing them before a mid-page sibling would bury them in the
-            # middle of the previous section's content.
-            for label, level, number in pending:
-                _append_top({
-                    "text": label, "level": level, "number": number,
-                    "matched": False, "auto": False, "implicit": True,
-                    "keep_line": False, "suppress": [],
                 })
         pending = []
 
@@ -1869,30 +1877,32 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
         if found_span:
             start, end = found_span
             positions = [(flat_lines[i][0], flat_lines[i][1]) for i in range(start, end)]
-            # Upgrade keep_line if the raw line has content normalization stripped
-            # (e.g. footnote refs like (١)) — those must stay visible in the body.
-            if not keep_line:
-                for i in range(start, end):
-                    pi, li, _ = flat_lines[i]
-                    raw_line = (paras[pi].get("lines") or [])[li] if pi < len(paras) else ""
-                    if _has_extra_content(raw_line, norm_label):
-                        keep_line = True
-                        break
-            if start > cursor and cursor == 0:
-                # Body text appears before the first matched heading on this
-                # page — hoist both pending parents and this entry to page-top
-                # so they title the whole page in the correct parent→child order.
+
+            # Post-check: upgrade keep_line if any matched raw line has content
+            # that normalization silently stripped (e.g. footnote refs like (١)).
+            # We access the raw line directly from paras using (pi, li).
+            if not keep_line and end - start == 1:
+                pi, li = positions[0]
+                raw_line = (paras[pi].get("lines") or [])[li] if paras and pi < len(paras) else ""
+                if raw_line and _has_extra_content(raw_line, norm_label):
+                    keep_line = True
+
+            # Only hoist to page-top when the heading is literally the first
+            # content on the page (start == cursor == 0).
+            # "start > cursor and cursor == 0" must NOT hoist: body text before
+            # the heading belongs to the continued prior section and must render
+            # first; hoisting caused headings to appear inside the previous
+            # section's content in the PDF.
+            if start == 0 and cursor == 0:
                 _flush_pending_as_top()
                 _append_top({
                     "text": label, "level": level, "number": number,
                     "matched": True, "auto": False, "implicit": False,
-                    "keep_line": False, "suppress": list(positions),
+                    "keep_line": keep_line, "suppress": [] if keep_line else list(positions),
                 })
             else:
-                # cursor > 0: a prior heading already claimed the page top.
-                # This is a sibling heading found mid-page after its predecessor's
-                # content — keep it inline so content flows between siblings.
-                # Also covers start == cursor (heading right at current position).
+                # Heading found mid-page (after prior body text or a prior
+                # heading).  Keep inline so content flows between sections.
                 _flush_pending_before_child(positions)
                 suppress = [] if keep_line else list(positions)
                 resolved.append({
@@ -1935,7 +1945,9 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
             for slot, h in enumerate(promoted):
                 h["positions"] = [(0, slot)]
                 h["at_page_top"] = True
-                h["suppress"] = []
+                # Do NOT clear suppress here — the original matched line
+                # positions must stay suppressed so _extract_bracket_headings
+                # doesn't re-emit the same label as an auto heading.
             resolved = promoted + remaining
 
     return resolved
@@ -2021,8 +2033,8 @@ def resolve_book_headings(meta: dict, pages_iter):
         # Also suppress any plain-text line whose normalized form matches an
         # already-resolved heading label — these are unbracketed echoes of
         # bracket headings (e.g. "الأصْلُ الثَّانِي" after "[الأصل الثاني...]").
-        # Exception: don't echo-suppress lines that belong to a keep_line heading
-        # (those lines have extra content, e.g. footnote refs, that must stay visible).
+        # Exception: never echo-suppress a line that keep_line marked as having
+        # extra content (footnote refs etc.) — those must stay visible.
         resolved_norms: set[str] = {_normalize_ar(h["text"]) for h in located}
         keep_line_positions: set[tuple[int, int]] = {
             tuple(pos)

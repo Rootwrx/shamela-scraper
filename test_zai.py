@@ -166,16 +166,25 @@ def parse_toc_tree(ul_tag, level: int = 0) -> list[dict]:
         # Find the actual title link, skipping the [+] expand button
         # which has class "exp_bu" and href="javascript:;"
         a = None
-        for tag in li.find_all("a", href=True):
-            if "exp_bu" not in tag.get("class", []):
-                a = tag
-                break
+        exp_bu_tag = None
+        for tag in li.find_all("a"):
+            if "exp_bu" in tag.get("class", []):
+                exp_bu_tag = tag
+            elif tag.get("href"):
+                if a is None:
+                    a = tag
         node = {"label": None, "page_id": None, "level": level}
         if a:
             node["label"] = a.get_text(strip=True)
             m = re.search(r"/book/\d+/(\d+)", a.get("href", ""))
             if m:
                 node["page_id"] = int(m.group(1))
+        # Capture the lazy-load node id from the [+] button so fetch_toc_children
+        # can later retrieve collapsed children via /node/<book_id>/<exp_bu_id>
+        if exp_bu_tag:
+            data_id = exp_bu_tag.get("data-id")
+            if data_id:
+                node["_exp_bu_id"] = data_id
         child_ul = li.find("ul", recursive=False)
         children = parse_toc_tree(child_ul, level + 1) if child_ul else []
         if children:
@@ -196,6 +205,51 @@ def flatten_toc(tree: list[dict]) -> list[dict]:
         if node.get("children"):
             flat.extend(flatten_toc(node["children"]))
     return flat
+
+
+def fetch_toc_children(session: requests.Session, book_id: int, tree: list[dict],
+                       delay: float = 0.3) -> None:
+    """
+    Walk the TOC tree and, for every node that has an ``_exp_bu_id`` but no
+    children yet, fetch its children from Shamela's AJAX endpoint:
+
+        GET https://shamela.ws/ajax/titlechilds/<book_id>/<data-id>
+
+    The endpoint returns a bare ``<ul>`` HTML fragment identical to what the
+    browser injects after the user clicks a [+] button.  We parse it with
+    ``parse_toc_tree`` and attach the result as the node's ``children``.
+
+    The ``_exp_bu_id`` internal key is stripped from every node before
+    returning so it does not leak into the final JSON.
+
+    Mutates *tree* in-place; returns nothing.
+    """
+    for node in tree:
+        exp_id = node.pop("_exp_bu_id", None)  # always clean up, even if no fetch needed
+
+        has_children = bool(node.get("children"))
+
+        if exp_id and not has_children:
+            url = f"{BASE}/ajax/titlechilds/{book_id}/{exp_id}"
+            try:
+                resp = session.get(url, timeout=15)
+                resp.raise_for_status()
+                frag = BeautifulSoup(resp.text, "lxml")
+                # The response is a bare HTML fragment; find the outermost <ul>
+                ul = frag.find("ul")
+                if ul:
+                    children = parse_toc_tree(ul, level=node["level"] + 1)
+                    if children:
+                        node["children"] = children
+                time.sleep(delay)
+            except Exception as e:
+                # Non-fatal: log and keep going with whatever we have
+                print(f"    [toc] warn: could not fetch node {exp_id} for book {book_id}: {e}")
+
+        # Recurse into already-present children (they may themselves have
+        # _exp_bu_ids for grandchildren that were lazy-loaded)
+        if node.get("children"):
+            fetch_toc_children(session, book_id, node["children"], delay=delay)
 
 
 def toc_summary_stats(tree: list[dict]) -> dict:
@@ -337,6 +391,12 @@ def fetch_book_meta(session: requests.Session, book_id: int) -> dict:
                     toc_tree = snav_tree
         except Exception:
             pass  # fall back to whatever we already have
+
+    # Expand any lazy-loaded [+] nodes whose children weren't in the HTML
+    # (this is a no-op for books where the home page already had all children,
+    # and essential for books like Quran tafsirs with verse-level sub-entries)
+    print(f"    [toc] expanding lazy-loaded nodes for book {book_id} ...")
+    fetch_toc_children(session, book_id, toc_tree)
 
     meta["toc"] = toc_tree
     meta["toc_flat"] = flatten_toc(toc_tree)
@@ -1729,10 +1789,15 @@ def _has_extra_content(line_html: str, norm_label: str) -> bool:
 
     Comparison is done on tashkeel-stripped plain text WITHOUT removing
     parenthesised groups, so "(١)" still counts as extra content.
+    Bracket chars and edge punctuation are stripped to avoid false positives
+    on lines like "[عنوان]" where the brackets are the only "extra" content.
     """
     plain = _plain_text(line_html).strip()
-    plain_no_tashkeel = _TASHKEEL_RE.sub("", plain).strip()
-    norm_label_plain   = _TASHKEEL_RE.sub("", norm_label).strip()
+    # Strip the same edge chars _normalize_ar strips (brackets, punctuation)
+    # but keep parenthesised groups intact so "(١)" is still detected.
+    plain_stripped = plain.strip(_BRACKET_STRIP_CHARS + " :،ـ")
+    plain_no_tashkeel = _TASHKEEL_RE.sub("", plain_stripped).strip()
+    norm_label_plain  = _TASHKEEL_RE.sub("", norm_label).strip()
     return len(plain_no_tashkeel) > len(norm_label_plain)
 
 
@@ -1940,7 +2005,9 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
             for slot, h in enumerate(promoted):
                 h["positions"] = [(0, slot)]
                 h["at_page_top"] = True
-                h["suppress"] = []
+                # Do NOT clear suppress here — the original matched line
+                # positions must stay suppressed so _extract_bracket_headings
+                # doesn't re-emit the same label as an auto heading.
             resolved = promoted + remaining
 
     return resolved
