@@ -1716,9 +1716,12 @@ def _build_html_css(meta: dict) -> str:
         font-weight: 600;
     }}
     .toc-numbered-heading.toc-nh-auto::before {{
-        content: "●";
-        color: #8b0000;
-        font-size: 0.7em;
+        content: "";
+        display: inline-block;
+        width: 0.45em;
+        height: 0.45em;
+        border-radius: 50%;
+        background: #8b0000;
         margin-left: 0.4em;
         vertical-align: middle;
     }}
