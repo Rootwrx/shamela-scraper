@@ -1196,8 +1196,8 @@ def _build_html_css(meta: dict) -> str:
     TEAL       = "#1a3a4a"
     RUST       = "#8b2e00"
     INK        = "#1a1008"
-    CREAM      = "#faf5e6"
-    PARCHMENT  = "#f5edd6"
+    CREAM      = "#fefcf7"
+    PARCHMENT  = "#fcf8ef"
     SEPIA      = "#5c3d1a"
     BROWN      = "#3e2712"
 
@@ -1260,16 +1260,11 @@ def _build_html_css(meta: dict) -> str:
         background: linear-gradient(180deg, {PARCHMENT} 0%, {CREAM} 25%, #fffdf5 50%, {CREAM} 75%, {PARCHMENT} 100%);
     }}
     @page :first {{
-        @top-left   {{ content: none; }}
-        @top-right {{
-            content: string(book-title);
-            font-family: {font_head};
-            font-size: 9pt;
-            font-weight: 600;
-            color: {TEAL};
-            text-align: left;
-        }}
-        @top-center {{ content: none; }}
+        margin: 0;
+        background: linear-gradient(180deg, {PARCHMENT} 0%, {CREAM} 25%, #fffdf5 50%, {CREAM} 75%, {PARCHMENT} 100%);
+        @top-left     {{ content: none; }}
+        @top-center   {{ content: none; }}
+        @top-right    {{ content: none; }}
         @bottom-center {{ content: none; }}
         @bottom-left  {{ content: none; }}
         @bottom-right {{ content: none; }}
@@ -1301,21 +1296,25 @@ def _build_html_css(meta: dict) -> str:
         padding: 0;
         margin: 0;
         background: linear-gradient(180deg, {PARCHMENT} 0%, {CREAM} 25%, #fffdf5 50%, {CREAM} 75%, {PARCHMENT} 100%);
-        height: 26.7cm;
+        height: 29.7cm;
+        display: flex;
+        flex-direction: column;
     }}
 
     .cover-frame-outer {{
         border: 5px double {SEPIA};
-        margin: 0.2cm;
+        margin: 0;
         padding: 0.6cm;
-        height: 25.7cm;
+        flex: 1;
         background: linear-gradient(180deg, #fdf8ee 0%, #fffef8 40%, #fdf8ee 100%);
+        display: flex;
+        flex-direction: column;
     }}
 
     .cover-frame-inner {{
         border: 2.5px solid {GOLD_L};
         padding: 1.2cm 1.8cm 1cm;
-        height: 23.7cm;
+        flex: 1;
         position: relative;
         background: linear-gradient(180deg, #fffcf2 0%, #fff 50%, #fef9ed 100%);
     }}
