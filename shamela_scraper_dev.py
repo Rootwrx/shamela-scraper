@@ -1694,7 +1694,8 @@ def _normalize_ar(s: str) -> str:
 def _bracket_stripped(line_html: str) -> str | None:
     plain = _plain_text(line_html).strip()
     if plain.startswith("[") and plain.endswith("]"):
-        return plain.strip(_BRACKET_STRIP_CHARS).strip()
+        import html as _html_mod
+        return _html_mod.unescape(plain.strip(_BRACKET_STRIP_CHARS).strip())
     return None
 
 
@@ -1805,36 +1806,26 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
 
     def _flush_pending_before_child(child_positions: list[tuple[int, int]]):
         """
-        Flush pending (unmatched parent) entries inline, positioned just
-        before the child's first line.  This keeps parent→child order in the
-        rendered document even when the parent text was never present on the
-        page (e.g. it was a Shamela [+] collapsible toggle, not real text).
+        Flush pending (unmatched parent) entries, positioning them just before
+        the child that triggered the flush.
 
-        If the child itself is at the very start of the page (first real
-        line, cursor == 0) we use top_slot so that ALL pre-body headings
-        cluster together at the top — but only when no body text has been
-        consumed yet.
+        If the child is at the page top (first real line, cursor == 0) we use
+        top_slot so that all pre-body headings cluster together at the top.
+
+        If the child is mid-page we still send the parents to page-top — they
+        have no text match on this page and belong at the top as section titles,
+        not buried mid-page before an arbitrary sibling's position.
         """
         nonlocal pending, top_slot
         if not pending:
             return
         child_pi, child_li = child_positions[0]
-        # If the child is at the page top (no body lines consumed before it),
-        # treat parents as top-slot entries too — they'll render before the child.
-        if cursor == 0 and child_pi == flat_lines[0][0] and child_li == flat_lines[0][1]:
-            for label, level, number in pending:
-                _append_top({
-                    "text": label, "level": level, "number": number,
-                    "matched": False, "auto": False, "implicit": True,
-                    "keep_line": False, "suppress": [],
-                })
-        else:
-            # Place parents inline just before the child using a synthetic
-            # sub-line index so sorting puts them immediately before (child_li - 0.5
-            # is not an int, so we use child_li with a fractional trick via a
-            # dedicated "before_child" flag handled in the sort key).
-            # Simpler: give them the same (pi, li) as the child but mark
-            # "before_child=True"; the render sort will place them first.
+        at_first_line = (cursor == 0
+                         and child_pi == flat_lines[0][0]
+                         and child_li == flat_lines[0][1])
+        if at_first_line:
+            # Child is the very first body content — use before_child inline
+            # so the parent heading renders immediately above the child heading.
             for idx, (label, level, number) in enumerate(pending):
                 resolved.append({
                     "positions": [(child_pi, child_li)],
@@ -1842,8 +1833,18 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
                     "matched": False, "auto": False, "implicit": True,
                     "keep_line": False, "suppress": [],
                     "at_page_top": False,
-                    "before_child": True,   # sentinel: render before same-position child
+                    "before_child": True,
                     "_before_child_slot": idx,
+                })
+        else:
+            # Child is mid-page — send unmatched parents to page-top instead.
+            # Placing them before a mid-page sibling would bury them in the
+            # middle of the previous section's content.
+            for label, level, number in pending:
+                _append_top({
+                    "text": label, "level": level, "number": number,
+                    "matched": False, "auto": False, "implicit": True,
+                    "keep_line": False, "suppress": [],
                 })
         pending = []
 
