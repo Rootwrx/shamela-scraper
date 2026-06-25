@@ -207,6 +207,16 @@ def flatten_toc(tree: list[dict]) -> list[dict]:
     return flat
 
 
+def _toc_has_lazy_nodes(tree: list[dict]) -> bool:
+    """Return True if any node in the TOC tree has a lazy-loaded [+] button."""
+    for node in tree:
+        if "_exp_bu_id" in node and not node.get("children"):
+            return True
+        if node.get("children") and _toc_has_lazy_nodes(node["children"]):
+            return True
+    return False
+
+
 def fetch_toc_children(session: requests.Session, book_id: int, tree: list[dict],
                        delay: float = 0.3) -> None:
     """
@@ -395,8 +405,9 @@ def fetch_book_meta(session: requests.Session, book_id: int) -> dict:
     # Expand any lazy-loaded [+] nodes whose children weren't in the HTML
     # (this is a no-op for books where the home page already had all children,
     # and essential for books like Quran tafsirs with verse-level sub-entries)
-    print(f"    [toc] expanding lazy-loaded nodes for book {book_id} ...")
-    fetch_toc_children(session, book_id, toc_tree)
+    if _toc_has_lazy_nodes(toc_tree):
+        print(f"    [toc] expanding lazy-loaded nodes for book {book_id} ...")
+        fetch_toc_children(session, book_id, toc_tree)
 
     meta["toc"] = toc_tree
     meta["toc_flat"] = flatten_toc(toc_tree)
@@ -1833,6 +1844,18 @@ def _find_label_in_lines(norm_label: str, flat_lines: list[tuple[int, int, str]]
         if label_words and all(w in line_norm for w in label_words):
             return (start, start + 1), line_norm != norm_label
 
+    # Fallback: label appears at the start of a line followed by a
+    # non-alphanumeric character.  This handles TOC labels that are
+    # short (1-3 chars, e.g. Arabic verse numbers like "٦" matching
+    # page content "٦ - إ...") without falsely matching "٦" against
+    # "٦٧" (the next char "٧" is alphanumeric → skipped).
+    for start in range(cursor, len(flat_lines)):
+        line_norm = flat_lines[start][2]
+        if (line_norm.startswith(norm_label)
+                and len(line_norm) > len(norm_label)
+                and not line_norm[len(norm_label)].isalnum()):
+            return (start, start + 1), True
+
     return None, False
 
 
@@ -2090,11 +2113,24 @@ def resolve_book_headings(meta: dict, pages_iter):
             for pos in h.get("suppress", []):
                 consumed_positions.add(tuple(pos))
 
+        # Pre-extract bracket heading positions BEFORE echo suppression so
+        # bracket-detected headings are never consumed by echo suppression
+        # (which would prevent the heading from being rendered).  Without this,
+        # a line like "[الفصل الثالث]" that appears twice on the same page would
+        # be echo-suppressed on the second occurrence and never rendered as a
+        # heading, leaving a gap in the output.
+        bracket_headings = _extract_bracket_headings(page.get("paragraphs"))
+        bracket_positions: set[tuple[int, int]] = set()
+        for bh in bracket_headings:
+            bracket_positions.add((bh["para_idx"], bh["line_idx"]))
+
         # Also suppress any plain-text line whose normalized form matches an
         # already-resolved heading label — these are unbracketed echoes of
         # bracket headings (e.g. "الأصْلُ الثَّانِي" after "[الأصل الثاني...]").
         # Exception: never echo-suppress a line that keep_line marked as having
         # extra content (footnote refs etc.) — those must stay visible.
+        # Also skip positions already flagged as bracket headings — they have
+        # their own rendering path below.
         resolved_norms: set[str] = {_normalize_ar(h["text"]) for h in located}
         keep_line_positions: set[tuple[int, int]] = {
             tuple(pos)
@@ -2112,6 +2148,8 @@ def resolve_book_headings(meta: dict, pages_iter):
                     continue
                 if (pi, li) in keep_line_positions:
                     continue
+                if (pi, li) in bracket_positions:
+                    continue
                 if _normalize_ar(line) in resolved_norms:
                     consumed_positions.add((pi, li))
                     echo_suppressed.append([pi, li])
@@ -2121,15 +2159,29 @@ def resolve_book_headings(meta: dict, pages_iter):
         for h in located:
             deepest_level, deepest_number = h["level"], h["number"]
 
+        # Compute how many TOC children exist under the deepest heading on
+        # this page so auto-detected bracket headings can continue the
+        # numbering without conflicting with existing TOC entries.
+        existing_child_count = 0
+        if deepest_number != "0":
+            existing_child_count = sum(
+                1 for _, _, num in page_toc_new
+                if num.startswith(f"{deepest_number}.")
+                and num.count(".") == deepest_number.count(".") + 1
+            )
+
         auto_n = 0
         resolved: list[dict] = list(located)
-        for bh in _extract_bracket_headings(page.get("paragraphs")):
+        for bh in bracket_headings:
             pos = (bh["para_idx"], bh["line_idx"])
             if pos in consumed_positions:
                 continue
             auto_n += 1
             auto_level = min(deepest_level + 1, 6)
-            auto_number = f"{deepest_number}.u{auto_n}"
+            if deepest_number == "0":
+                auto_number = str(auto_n)
+            else:
+                auto_number = f"{deepest_number}.{existing_child_count + auto_n}"
             resolved.append({
                 **bh, "positions": [pos], "level": auto_level,
                 "number": auto_number, "matched": False, "auto": True,
