@@ -1714,8 +1714,13 @@ def _build_html_css(meta: dict) -> str:
         font-style: italic;
         color: #8a8a8a;
         font-weight: 600;
-        border-right: 3px dotted {GOLD_L};
-        padding-right: 0.4em;
+    }}
+    .toc-numbered-heading.toc-nh-auto::before {{
+        content: "●";
+        color: #8b0000;
+        font-size: 0.7em;
+        margin-left: 0.4em;
+        vertical-align: middle;
     }}
 
 
