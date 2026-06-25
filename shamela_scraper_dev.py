@@ -1522,7 +1522,7 @@ def _build_html_css(meta: dict) -> str:
        NUMBERED HEADINGS  (visible TOC entry markers)
        ═══════════════════════════════════════════════════════ */
     .toc-numbered-heading {{
-        font-family: {font_head};
+        font-family: {font_body};
         font-size: 15pt;
         font-weight: 800;
         color: {TEAL};
@@ -1558,11 +1558,11 @@ def _build_html_css(meta: dict) -> str:
         border-right: 3px dotted {GOLD_L};
         padding-right: 0.4em;
     }}
-    /* TOC entry with no matching text on the page. */
-    .toc-numbered-heading.toc-nh-implicit {{
-        border-right: 3px dashed {GOLD_L};
-        padding-right: 0.4em;
-    }}
+
+
+
+
+
 
     /* ═══════════════════════════════════════════════════════
        AUTHOR BIO
@@ -1699,10 +1699,10 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
                                   toc_pool: list[tuple[str, int, str]]
                                   ) -> list[dict]:
     """
-    TOC entries that start on this shamela page are always rendered at the
-    top of the page (in TOC order).  Text matching is only used to detect
-    duplicate body lines that can be dropped when the label is an exact match.
-  """
+    Anchor TOC entries to inline body lines when the label appears in the
+    text (``اسمُه:`` vs TOC ``اسمه``).  Unmatched entries and partial
+    substring matches that sit after other page content go to the page top.
+    """
     flat_lines: list[tuple[int, int, str]] = []
     for pi, para in enumerate(paras or []):
         if para.get("type") == "hamesh":
@@ -1713,21 +1713,56 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
                 flat_lines.append((pi, li, norm))
 
     resolved: list[dict] = []
-    for idx, (label, level, number) in enumerate(toc_pool):
+    pending: list[tuple[str, int, str]] = []
+    top_slot = 0
+    cursor = 0
+
+    def _append_top(entry: dict):
+        nonlocal top_slot
+        entry["positions"] = [(0, top_slot)]
+        entry["at_page_top"] = True
+        resolved.append(entry)
+        top_slot += 1
+
+    def _flush_pending():
+        nonlocal pending
+        for label, level, number in pending:
+            _append_top({
+                "text": label, "level": level, "number": number,
+                "matched": False, "auto": False, "implicit": True,
+                "keep_line": False, "suppress": [],
+            })
+        pending = []
+
+    for label, level, number in toc_pool:
         norm_label = _normalize_ar(label)
-        found_span, keep_line = _find_label_in_lines(norm_label, flat_lines, 0)
-        suppress: list[tuple[int, int]] = []
-        matched = found_span is not None
-        if found_span and not keep_line:
+        found_span, keep_line = _find_label_in_lines(norm_label, flat_lines, cursor)
+        if found_span:
             start, end = found_span
-            suppress = [(flat_lines[i][0], flat_lines[i][1]) for i in range(start, end)]
-        resolved.append({
-            "positions": [(0, -(idx + 1))],
-            "text": label, "level": level, "number": number,
-            "matched": matched, "auto": False,
-            "implicit": not matched, "keep_line": keep_line if matched else False,
-            "suppress": suppress,
-        })
+            positions = [(flat_lines[i][0], flat_lines[i][1]) for i in range(start, end)]
+            _flush_pending()
+            if start > cursor:
+                # There are unmatched body lines before this match — the TOC
+                # heading titles the whole page so hoist it to the top.
+                # Suppress the matched bracket line (heading text already in label).
+                _append_top({
+                    "text": label, "level": level, "number": number,
+                    "matched": True, "auto": False, "implicit": False,
+                    "keep_line": False, "suppress": list(positions),
+                })
+            else:
+                suppress = [] if keep_line else list(positions)
+                resolved.append({
+                    "positions": positions, "text": label, "level": level,
+                    "number": number, "matched": True, "auto": False,
+                    "implicit": False, "keep_line": keep_line,
+                    "suppress": suppress, "at_page_top": False,
+                })
+            cursor = end
+        else:
+            pending.append((label, level, number))
+
+    _flush_pending()
     return resolved
 
 
@@ -1803,6 +1838,21 @@ def resolve_book_headings(meta: dict, pages_iter):
         for h in located:
             for pos in h.get("suppress", []):
                 consumed_positions.add(tuple(pos))
+
+        # Also suppress any plain-text line whose normalized form matches an
+        # already-resolved heading label — these are unbracketed echoes of
+        # bracket headings (e.g. "الأصْلُ الثَّانِي" after "[الأصل الثاني...]").
+        resolved_norms: set[str] = {_normalize_ar(h["text"]) for h in located}
+        paras_here = page.get("paragraphs") or []
+        for pi, para in enumerate(paras_here):
+            if para.get("type") == "hamesh":
+                continue
+            for li, line in enumerate(para.get("lines", [])):
+                if (pi, li) in consumed_positions:
+                    continue
+                if _normalize_ar(line) in resolved_norms:
+                    consumed_positions.add((pi, li))
+
         deepest_level = breadcrumb_stack[-1][2] if breadcrumb_stack else -1
         deepest_number = breadcrumb_stack[-1][0] if breadcrumb_stack else "0"
         for h in located:
@@ -1874,7 +1924,7 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
         for pos in h.get("suppress", []):
             suppressed_positions.add(tuple(pos))
         pi, li = h["positions"][0]
-        if li < 0:
+        if h.get("at_page_top"):
             page_start_headings.append(h)
         else:
             heading_by_start[(pi, li)] = h
@@ -1907,7 +1957,7 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
     has_body = paras or page.get("text")
     if has_body:
         _open_entry()
-        for h in sorted(page_start_headings, key=lambda x: x["positions"][0][1]):
+        for h in sorted(page_start_headings, key=lambda x: x["positions"][0]):
             parts.append(_heading_html(h))
 
     if paras:
@@ -2387,20 +2437,32 @@ def main():
             print("\n[!] Interrupted by user. Progress saved — re-run to resume.")
             sys.exit(1)
         except Exception as e:
+            import traceback as _tb
             print(f"[!] Unhandled error on book {book_id}: {e}")
+            _tb.print_exc()
             entry = manifest.book(book_id)
             entry["status"] = "error"
             entry["error"] = str(e)
+            entry["traceback"] = _tb.format_exc()
             manifest.save()
         status = manifest.book(book_id).get("status")
         if status == "done":
             done += 1
-        elif status == "error":
+        elif status in ("error", "paused", "in_progress"):
             errors += 1
         if i < len(queue):
             time.sleep(args.delay)
 
     print(f"\n[✓] Run finished. done={done}  error/incomplete={errors}  total={len(queue)}")
+    for bid, _ in queue:
+        entry = manifest.book(bid)
+        st = entry.get("status", "?")
+        detail = f"  [{st}] book {bid}: {entry.get('title', '?')}"
+        if st == "error":
+            detail += f"\n         → {entry.get('error', '(no message)')}"
+        elif st == "paused":
+            detail += f"  (next_page_id={entry.get('next_page_id')}, pages_scraped={entry.get('pages_scraped')})"
+        print(detail)
     print(f"    Manifest: {manifest.path}")
     print(f"    Run again with the same command at any time to resume incomplete books.")
 
