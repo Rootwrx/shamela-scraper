@@ -1996,6 +1996,13 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
     for label, level, number in toc_pool:
         norm_label = _normalize_ar(label)
         found_span, keep_line = _find_label_in_lines(norm_label, flat_lines, cursor)
+        if not found_span:
+            # Search from page start — handles children whose text
+            # appears before their parent's position on the page
+            # (e.g. ملخص البحث before المقدمة in book 909).
+            found_span, keep_line = _find_label_in_lines(norm_label, flat_lines, 0)
+            if found_span and found_span[0] >= cursor:
+                found_span = None   # only accept matches before cursor
         if found_span:
             start, end = found_span
             positions = [(flat_lines[i][0], flat_lines[i][1]) for i in range(start, end)]
