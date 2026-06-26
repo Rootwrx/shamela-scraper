@@ -1596,11 +1596,16 @@ def _build_html_css(meta: dict) -> str:
         width: 28%;
     }}
 
-    .cover-note {{
-        font-size: 9pt;
-        color: {SEPIA};
-        margin: 0.2em 0;
+    .cover-extra-block {{
+        margin: 0.6em auto 0;
+        width: 85%;
+    }}
+    .cover-extra {{
+        font-size: 10pt;
+        color: {BROWN};
+        margin: 0.15em 0;
         text-align: center;
+        line-height: 1.5;
     }}
 
     .cover-ornament-bottom {{
@@ -2496,16 +2501,28 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
         # Book title
         fh.write(f'<h1>{_e(meta.get("title", "كتاب"))}</h1>\n')
 
-        # Meta info — all book card key:value pairs + notes
+        # Meta info — known fields in table, extra lines as text
+        KNOWN_LABELS = {"الكتاب", "المؤلف", "الناشر", "الطبعة",
+                        "عدد الأجزاء", "عدد الصفحات", "المحقق"}
         info_pairs = meta.get("info_pairs", [])
-        if info_pairs:
-            rows = "".join(
-                f'<tr><td class="meta-label">{_e(label)}</td><td>{_e(value)}</td></tr>'
-                for label, value in info_pairs
-            )
-            fh.write(f'<table class="meta-table">{rows}</table>\n')
-        for note in meta.get("info_notes", []):
-            fh.write(f'<p class="cover-note">{_e(note)}</p>\n')
+        known_rows = []
+        extra_lines = []
+        for label, value in info_pairs:
+            if label in KNOWN_LABELS:
+                known_rows.append(
+                    f'<tr><td class="meta-label">{_e(label)}</td>'
+                    f'<td>{_e(value)}</td></tr>'
+                )
+            else:
+                extra_lines.append(f"{_e(label)}: {_e(value)}")
+        if known_rows:
+            fh.write(f'<table class="meta-table">{"".join(known_rows)}</table>\n')
+        all_extra = extra_lines + [_e(n) for n in meta.get("info_notes", [])]
+        if all_extra:
+            fh.write('<div class="cover-extra-block">\n')
+            for line in all_extra:
+                fh.write(f'<p class="cover-extra">{line}</p>\n')
+            fh.write('</div>\n')
 
         # Bottom ornament
         fh.write('<div class="cover-ornament-bottom">&#10022; &#10023; &#10022; &#10023; &#10022;</div>\n')
