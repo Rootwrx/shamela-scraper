@@ -699,8 +699,15 @@ def parse_page_html(html: str) -> list[dict]:
 
 
 def get_next_page_id(html: str) -> int | None:
-    """Extract next page ID from the 'load next' button."""
+    """Extract next page ID from Ajax wrapper div or the 'load next' button."""
     soup = BeautifulSoup(html, "lxml")
+    # Ajax response: data-next-id on the wrapper div[data-page-id]
+    div = soup.find("div", {"data-page-id": True})
+    if div and div.get("data-next-id"):
+        nid = div["data-next-id"].strip()
+        if nid:
+            return int(nid)
+    # Fallback: old full-page HTML with bu_load_next button
     btn = soup.find("button", {"id": "bu_load_next"})
     if btn and btn.get("data-next-id"):
         return int(btn["data-next-id"])
@@ -769,17 +776,38 @@ def _scan_pages_jsonl(pages_path: Path) -> tuple[int | None, int]:
 def _fetch_one(args_tuple) -> tuple[int, str | None, str | None]:
     """Worker target: (session, book_id, page_id, stagger_delay) → (page_id, html, err).
     Retries up to 3 times with backoff on transient errors (5xx, connection).
+
+    Uses the Shamela Ajax endpoint (ajax/pageContent) which returns clean JSON
+    with just the page content, navigation-free HTML, and pagination IDs.
+    Falls back to the full-page HTML endpoint on any non-403 error.
     """
     session, book_id, page_id, stagger = args_tuple
     if stagger > 0:
         time.sleep(stagger)
-    url = f"{BASE}/book/{book_id}/{page_id}"
     last_err: str | None = None
+
+    # Primary: Ajax endpoint (clean JSON, no navigation shell)
+    try:
+        url = f"{BASE}/ajax/pageContent/{book_id}/{page_id}"
+        resp = session.get(url, timeout=25)
+        if resp.status_code == 403:
+            return page_id, None, "403 Forbidden — try --cf_clearance"
+        resp.raise_for_status()
+        data = resp.json()
+        pid  = data.get("pageId", page_id)
+        pnum = data.get("pageNum", "")
+        nid  = (data.get("nextId") or "").strip()
+        nass = data.get("nass", "")
+        html = f'<div data-page-id="{pid}" data-page-num="{pnum}" data-next-id="{nid}">{nass}</div>'
+        return page_id, html, None
+    except requests.RequestException as e:
+        last_err = str(e)
+
+    # Fallback: full-page HTML endpoint
     for attempt in range(1, 4):
         try:
+            url = f"{BASE}/book/{book_id}/{page_id}"
             resp = session.get(url, timeout=25)
-            if resp.status_code == 403:
-                return page_id, None, "403 Forbidden — try --cf_clearance"
             resp.raise_for_status()
             return page_id, resp.text, None
         except requests.RequestException as e:
@@ -787,6 +815,7 @@ def _fetch_one(args_tuple) -> tuple[int, str | None, str | None]:
             if attempt < 3:
                 wait = attempt * 2
                 time.sleep(wait)
+
     return page_id, None, last_err
 
 
@@ -981,6 +1010,13 @@ def _discover_page_ids(
         extra_cache: dict[int, str] = {}
         walked_segments = 0
         walked_pages = 0
+
+        # Pages before the first TOC entry (e.g. preface, cover, volume 1
+        # content when the TOC starts in volume 2).  Fill linearly since
+        # these form a continuous pre-TOC block with no TOC anchors.
+        if toc_ids and start_page < toc_ids[0]:
+            for pid in range(start_page, toc_ids[0]):
+                filled.append(pid)
 
         for i, tid in enumerate(toc_ids):
             nxt = toc_ids[i + 1] if i < len(toc_ids) - 1 else None
@@ -2788,12 +2824,18 @@ def process_book(session: requests.Session, book_id: int, out_dir: Path,
 
     # ── determine first page id ─────────────────────────────────────────
     first_page = args.start_page
-    if first_page == 1 and meta.get("toc_flat"):
-        first_with_pid = next((n["page_id"] for n in meta["toc_flat"] if n.get("page_id")), None)
-        if first_with_pid:
-            first_page = first_with_pid
-    elif first_page == 1 and meta.get("volume_start_pages"):
-        first_page = meta["volume_start_pages"][0]
+    if first_page == 1:
+        vol_starts = meta.get("volume_start_pages")
+        toc_first = next((n["page_id"] for n in meta.get("toc_flat", []) if n.get("page_id")), None)
+        # Prefer volume_start_pages[0] (always the true first page of the
+        # book) over the first TOC entry's page_id, because the TOC may
+        # start mid-book (e.g. volume 2) and skip all earlier content.
+        candidates = [1]
+        if vol_starts:
+            candidates.append(vol_starts[0])
+        if toc_first is not None:
+            candidates.append(toc_first)
+        first_page = min(candidates)
 
     # ── scrape (resumable) ──────────────────────────────────────────────
     if not args.pdf_only:
