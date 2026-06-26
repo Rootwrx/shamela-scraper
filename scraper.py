@@ -301,26 +301,36 @@ def fetch_book_meta(session: requests.Session, book_id: int) -> dict:
     nass = soup.find("div", class_="nass")
     if nass:
         raw = nass.get_text("\n", strip=True)
+        info_pairs = []
+        info_notes = []
         for line in raw.splitlines():
             line = line.strip()
-            parts = line.split(":", 1)
-            if len(parts) < 2:
+            if not line:
                 continue
-            label, value = parts[0].strip(), parts[1].strip()
-            if label == "الكتاب":
-                meta["title"] = value
-            elif label == "المؤلف":
-                meta["author"] = value
-            elif label == "الناشر":
-                meta["publisher"] = value
-            elif label == "الطبعة":
-                meta["edition"] = value
-            elif label == "عدد الأجزاء":
-                meta["volumes"] = value
-            elif label == "عدد الصفحات":
-                meta["pages"] = value
-            elif label == "المحقق":
-                meta["editor"] = value
+            parts = line.split(":", 1)
+            if len(parts) >= 2:
+                label, value = parts[0].strip(), parts[1].strip()
+                info_pairs.append([label, value])
+                if label == "الكتاب":
+                    meta["title"] = value
+                elif label == "المؤلف":
+                    meta["author"] = value
+                elif label == "الناشر":
+                    meta["publisher"] = value
+                elif label == "الطبعة":
+                    meta["edition"] = value
+                elif label == "عدد الأجزاء":
+                    meta["volumes"] = value
+                elif label == "عدد الصفحات":
+                    meta["pages"] = value
+                elif label == "المحقق":
+                    meta["editor"] = value
+            else:
+                info_notes.append(line)
+        if info_pairs:
+            meta["info_pairs"] = info_pairs
+        if info_notes:
+            meta["info_notes"] = info_notes
 
     # ── author page link ────────────────────────────────────────────────
     author_link = soup.find("a", href=re.compile(r"/author/\d+"))
@@ -1559,13 +1569,13 @@ def _build_html_css(meta: dict) -> str:
     .cover .meta-table {{
         margin: 1em auto;
         border-collapse: collapse;
-        width: 75%;
+        width: 85%;
         font-size: 11pt;
         color: {BROWN};
     }}
     .cover .meta-table td {{
-        padding: 0.4em 0.8em;
-        text-align: right;
+        padding: 0.4em 0.6em;
+        text-align: center;
         border-bottom: 1px dotted {GOLD_L};
         vertical-align: top;
     }}
@@ -1574,6 +1584,13 @@ def _build_html_css(meta: dict) -> str:
         font-weight: 800;
         white-space: nowrap;
         width: 28%;
+    }}
+
+    .cover-note {{
+        font-size: 9pt;
+        color: {SEPIA};
+        margin: 0.2em 0;
+        text-align: center;
     }}
 
     .cover-ornament-bottom {{
@@ -2469,15 +2486,16 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
         # Book title
         fh.write(f'<h1>{_e(meta.get("title", "كتاب"))}</h1>\n')
 
-        # Meta info table
-        rows = []
-        for label, key in [("المؤلف", "author"), ("الناشر", "publisher"),
-                            ("الطبعة", "edition"), ("عدد الأجزاء", "volumes")]:
-            if meta.get(key):
-                rows.append(f'<tr><td class="meta-label">{_e(label)}</td>'
-                             f'<td>{_e(meta[key])}</td></tr>')
-        if rows:
-            fh.write(f'<table class="meta-table">{"".join(rows)}</table>\n')
+        # Meta info — all book card key:value pairs + notes
+        info_pairs = meta.get("info_pairs", [])
+        if info_pairs:
+            rows = "".join(
+                f'<tr><td class="meta-label">{_e(label)}</td><td>{_e(value)}</td></tr>'
+                for label, value in info_pairs
+            )
+            fh.write(f'<table class="meta-table">{rows}</table>\n')
+        for note in meta.get("info_notes", []):
+            fh.write(f'<p class="cover-note">{_e(note)}</p>\n')
 
         # Bottom ornament
         fh.write('<div class="cover-ornament-bottom">&#10022; &#10023; &#10022; &#10023; &#10022;</div>\n')
