@@ -1790,14 +1790,11 @@ def _plain_text(html_frag: str) -> str:
 
 _BRACKET_STRIP_CHARS = "[]（）()「」【】《》〈〉"
 _TASHKEEL_RE = re.compile(r'[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]')
-_PAREN_GROUP_RE = re.compile(r'(\([^()]*\)|«[^«»]*»)')
-
 
 def _normalize_ar(s: str) -> str:
     """Normalize Arabic for comparing page text against a TOC label."""
     s = _plain_text(s)
     s = _TASHKEEL_RE.sub("", s)
-    s = _PAREN_GROUP_RE.sub("", s)
     s = s.strip(_BRACKET_STRIP_CHARS + " :،ـ")
     s = re.sub(r"\s+", " ", s).strip()
     return s
@@ -1835,7 +1832,7 @@ def _has_extra_content(line_html: str, norm_label: str) -> bool:
     """
     Return True if the raw page line has content beyond what the TOC label
     covers — e.g. a footnote reference (١) or extra words that normalization
-    stripped via _PAREN_GROUP_RE or tashkeel removal.
+    stripped via tashkeel removal.
 
     Comparison is done on tashkeel-stripped plain text WITHOUT removing
     parenthesised groups, so "(١)" still counts as extra content.
