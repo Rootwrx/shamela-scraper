@@ -300,47 +300,27 @@ def fetch_book_meta(session: requests.Session, book_id: int) -> dict:
     # ── book card text ──────────────────────────────────────────────────
     nass = soup.find("div", class_="nass")
     if nass:
-        info_pairs = []
-        info_notes = []
-        for child in nass.children:
-            if hasattr(child, "name"):
-                if child.name == "div" and "betaka-index" in child.get("class", []):
-                    break
-                if child.name in ("h3", "h4", "h5"):
-                    continue
-                if child.name == "br":
-                    continue
-                t = child.get_text("\n", strip=True)
-            else:
-                t = str(child).strip()
-            for line in t.splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                parts = line.split(":", 1)
-                if len(parts) >= 2:
-                    label, value = parts[0].strip(), parts[1].strip()
-                    info_pairs.append([label, value])
-                    if label == "الكتاب":
-                        meta["title"] = value
-                    elif label == "المؤلف":
-                        meta["author"] = value
-                    elif label == "الناشر":
-                        meta["publisher"] = value
-                    elif label == "الطبعة":
-                        meta["edition"] = value
-                    elif label == "عدد الأجزاء":
-                        meta["volumes"] = value
-                    elif label == "عدد الصفحات":
-                        meta["pages"] = value
-                    elif label == "المحقق":
-                        meta["editor"] = value
-                else:
-                    info_notes.append(line)
-        if info_pairs:
-            meta["info_pairs"] = info_pairs
-        if info_notes:
-            meta["info_notes"] = info_notes
+        raw = nass.get_text("\n", strip=True)
+        for line in raw.splitlines():
+            line = line.strip()
+            parts = line.split(":", 1)
+            if len(parts) < 2:
+                continue
+            label, value = parts[0].strip(), parts[1].strip()
+            if label == "الكتاب":
+                meta["title"] = value
+            elif label == "المؤلف":
+                meta["author"] = value
+            elif label == "الناشر":
+                meta["publisher"] = value
+            elif label == "الطبعة":
+                meta["edition"] = value
+            elif label == "عدد الأجزاء":
+                meta["volumes"] = value
+            elif label == "عدد الصفحات":
+                meta["pages"] = value
+            elif label == "المحقق":
+                meta["editor"] = value
 
     # ── author page link ────────────────────────────────────────────────
     author_link = soup.find("a", href=re.compile(r"/author/\d+"))
@@ -1579,13 +1559,13 @@ def _build_html_css(meta: dict) -> str:
     .cover .meta-table {{
         margin: 1em auto;
         border-collapse: collapse;
-        width: 85%;
+        width: 75%;
         font-size: 11pt;
         color: {BROWN};
     }}
     .cover .meta-table td {{
-        padding: 0.4em 0.6em;
-        text-align: center;
+        padding: 0.4em 0.8em;
+        text-align: right;
         border-bottom: 1px dotted {GOLD_L};
         vertical-align: top;
     }}
@@ -1594,18 +1574,6 @@ def _build_html_css(meta: dict) -> str:
         font-weight: 800;
         white-space: nowrap;
         width: 28%;
-    }}
-
-    .cover-extra-block {{
-        margin: 0.6em auto 0;
-        width: 85%;
-    }}
-    .cover-extra {{
-        font-size: 10pt;
-        color: {BROWN};
-        margin: 0.15em 0;
-        text-align: center;
-        line-height: 1.5;
     }}
 
     .cover-ornament-bottom {{
@@ -2501,28 +2469,15 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
         # Book title
         fh.write(f'<h1>{_e(meta.get("title", "كتاب"))}</h1>\n')
 
-        # Meta info — known fields in table, extra lines as text
-        KNOWN_LABELS = {"الكتاب", "المؤلف", "الناشر", "الطبعة",
-                        "عدد الأجزاء", "عدد الصفحات", "المحقق"}
-        info_pairs = meta.get("info_pairs", [])
-        known_rows = []
-        extra_lines = []
-        for label, value in info_pairs:
-            if label in KNOWN_LABELS:
-                known_rows.append(
-                    f'<tr><td class="meta-label">{_e(label)}</td>'
-                    f'<td>{_e(value)}</td></tr>'
-                )
-            else:
-                extra_lines.append(f"{_e(label)}: {_e(value)}")
-        if known_rows:
-            fh.write(f'<table class="meta-table">{"".join(known_rows)}</table>\n')
-        all_extra = extra_lines + [_e(n) for n in meta.get("info_notes", [])]
-        if all_extra:
-            fh.write('<div class="cover-extra-block">\n')
-            for line in all_extra:
-                fh.write(f'<p class="cover-extra">{line}</p>\n')
-            fh.write('</div>\n')
+        # Meta info table
+        rows = []
+        for label, key in [("المؤلف", "author"), ("الناشر", "publisher"),
+                            ("الطبعة", "edition"), ("عدد الأجزاء", "volumes")]:
+            if meta.get(key):
+                rows.append(f'<tr><td class="meta-label">{_e(label)}</td>'
+                             f'<td>{_e(meta[key])}</td></tr>')
+        if rows:
+            fh.write(f'<table class="meta-table">{"".join(rows)}</table>\n')
 
         # Bottom ornament
         fh.write('<div class="cover-ornament-bottom">&#10022; &#10023; &#10022; &#10023; &#10022;</div>\n')
