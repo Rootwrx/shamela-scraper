@@ -300,33 +300,43 @@ def fetch_book_meta(session: requests.Session, book_id: int) -> dict:
     # ── book card text ──────────────────────────────────────────────────
     nass = soup.find("div", class_="nass")
     if nass:
-        raw = nass.get_text("\n", strip=True)
         info_pairs = []
         info_notes = []
-        for line in raw.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            parts = line.split(":", 1)
-            if len(parts) >= 2:
-                label, value = parts[0].strip(), parts[1].strip()
-                info_pairs.append([label, value])
-                if label == "الكتاب":
-                    meta["title"] = value
-                elif label == "المؤلف":
-                    meta["author"] = value
-                elif label == "الناشر":
-                    meta["publisher"] = value
-                elif label == "الطبعة":
-                    meta["edition"] = value
-                elif label == "عدد الأجزاء":
-                    meta["volumes"] = value
-                elif label == "عدد الصفحات":
-                    meta["pages"] = value
-                elif label == "المحقق":
-                    meta["editor"] = value
+        for child in nass.children:
+            if hasattr(child, "name"):
+                if child.name == "div" and "betaka-index" in child.get("class", []):
+                    break
+                if child.name in ("h3", "h4", "h5"):
+                    continue
+                if child.name == "br":
+                    continue
+                t = child.get_text("\n", strip=True)
             else:
-                info_notes.append(line)
+                t = str(child).strip()
+            for line in t.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split(":", 1)
+                if len(parts) >= 2:
+                    label, value = parts[0].strip(), parts[1].strip()
+                    info_pairs.append([label, value])
+                    if label == "الكتاب":
+                        meta["title"] = value
+                    elif label == "المؤلف":
+                        meta["author"] = value
+                    elif label == "الناشر":
+                        meta["publisher"] = value
+                    elif label == "الطبعة":
+                        meta["edition"] = value
+                    elif label == "عدد الأجزاء":
+                        meta["volumes"] = value
+                    elif label == "عدد الصفحات":
+                        meta["pages"] = value
+                    elif label == "المحقق":
+                        meta["editor"] = value
+                else:
+                    info_notes.append(line)
         if info_pairs:
             meta["info_pairs"] = info_pairs
         if info_notes:
