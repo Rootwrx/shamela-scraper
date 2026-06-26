@@ -2491,7 +2491,7 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
         fh.write('</div><!-- cover -->\n')
 
         # ── AUTHOR INFO ────────────────────────────────────────────────
-        if author_info and not author_info.get("error"):
+        if author_info and not author_info.get("error") and author_info.get("bio"):
             fh.write('<div class="section-front">\n')
             fh.write('<h2>ترجمة المؤلف</h2>\n')
             if author_info.get("bio"):
@@ -2706,7 +2706,9 @@ def _build_book_outputs(meta: dict, author_info: dict, book_dir: Path,
 
     # ── assemble combined JSON ───────────────────────────────────────────
     pages = load_pages_jsonl(resolved_path)
-    data = {"meta": meta, "author_info": author_info, "pages": pages}
+    data = {"meta": meta, "pages": pages}
+    if author_info and not author_info.get("error") and author_info.get("bio"):
+        data["author_info"] = author_info
     json_path = book_dir / f"book_{book_id}.json"
     atomic_write_json(json_path, data)
     print(f"  [json] saved → {json_path}  ({len(pages)} pages)")
