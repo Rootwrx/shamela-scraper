@@ -1,17 +1,5 @@
-30626  3 nesting with 92 page
-
-7592
-12810
-
-22549 tafsir
-
-18102 : have dupilcation in surah nass : shamela
-
 909 : have  disorder between the content and the toc
-=> in pdf :
-    1.1 sub of 1 (in content it's before 1)
-    1 Introduction
-    1.2 sub of 2 (correctly positioned)
+
 
 in shamela :
 أَحْسَنُ المَنَاحِي فِيِ إِثْبِاتِ أَنَّ الرَّسْمَ العُثْمَانِي تَوْقِيِفِي لَا اصْطِلَاحِي
@@ -43,3 +31,13 @@ the toc in shamela
     المقدمة
         -ملخص البحث
         -خطة البحث
+
+
+we kinda fixed it but
+the generate pdf  is keep keept with the same disorders  i.e :
+    1.1 -ملخص البحث
+    1 المقدمة
+    1.2  -خطة البحث
+
+suggested fix:
+instead i think we should take the order in the content as the correct one and adjust or correct the order in the toc
