@@ -1899,7 +1899,7 @@ def _find_label_in_lines(norm_label: str, flat_lines: list[tuple[int, int, str]]
 
 
 def _locate_toc_headings_in_page(paras: list[dict] | None,
-                                  toc_pool: list[tuple[str, int, str]]
+                                  toc_pool: list[tuple[str, int, str, str | None]]
                                   ) -> list[dict]:
     """
     Anchor TOC entries to inline body lines when the label appears in the
@@ -1927,7 +1927,7 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
                 flat_lines.append((pi, li, norm))
 
     resolved: list[dict] = []
-    pending: list[tuple[str, int, str]] = []
+    pending: list[tuple[str, int, str, str | None]] = []
     top_slot = 0
     cursor = 0
 
@@ -1941,11 +1941,12 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
     def _flush_pending_as_top():
         """Flush pending entries to page-top (truly unmatched, end-of-pool)."""
         nonlocal pending
-        for label, level, number in pending:
+        for label, level, number, parent_text in pending:
             _append_top({
                 "text": label, "level": level, "number": number,
                 "matched": False, "auto": False, "implicit": True,
                 "keep_line": False, "suppress": [],
+                "toc_parent_text": parent_text,
             })
         pending = []
 
@@ -1968,32 +1969,28 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
         # If the child is at the page top (no body lines consumed before it),
         # treat parents as top-slot entries too — they'll render before the child.
         if cursor == 0 and child_pi == flat_lines[0][0] and child_li == flat_lines[0][1]:
-            for label, level, number in pending:
+            for label, level, number, parent_text in pending:
                 _append_top({
                     "text": label, "level": level, "number": number,
                     "matched": False, "auto": False, "implicit": True,
                     "keep_line": False, "suppress": [],
+                    "toc_parent_text": parent_text,
                 })
         else:
-            # Place parents inline just before the child using a synthetic
-            # sub-line index so sorting puts them immediately before (child_li - 0.5
-            # is not an int, so we use child_li with a fractional trick via a
-            # dedicated "before_child" flag handled in the sort key).
-            # Simpler: give them the same (pi, li) as the child but mark
-            # "before_child=True"; the render sort will place them first.
-            for idx, (label, level, number) in enumerate(pending):
+            for idx, (label, level, number, parent_text) in enumerate(pending):
                 resolved.append({
                     "positions": [(child_pi, child_li)],
                     "text": label, "level": level, "number": number,
                     "matched": False, "auto": False, "implicit": True,
                     "keep_line": False, "suppress": [],
                     "at_page_top": False,
-                    "before_child": True,   # sentinel: render before same-position child
+                    "before_child": True,
                     "_before_child_slot": idx,
+                    "toc_parent_text": parent_text,
                 })
         pending = []
 
-    for label, level, number in toc_pool:
+    for label, level, number, parent_text in toc_pool:
         norm_label = _normalize_ar(label)
         found_span, keep_line = _find_label_in_lines(norm_label, flat_lines, cursor)
         if not found_span:
@@ -2028,6 +2025,7 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
                     "text": label, "level": level, "number": number,
                     "matched": True, "auto": False, "implicit": False,
                     "keep_line": keep_line, "suppress": [] if keep_line else list(positions),
+                    "toc_parent_text": parent_text,
                 })
             else:
                 # Heading found mid-page (after prior body text or a prior
@@ -2039,10 +2037,11 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
                     "number": number, "matched": True, "auto": False,
                     "implicit": False, "keep_line": keep_line,
                     "suppress": suppress, "at_page_top": False,
+                    "toc_parent_text": parent_text,
                 })
             cursor = end
         else:
-            pending.append((label, level, number))
+            pending.append((label, level, number, parent_text))
 
     _flush_pending_as_top()
 
@@ -2090,6 +2089,8 @@ def resolve_book_headings(meta: dict, pages_iter):
     toc_flat = meta.get("toc_flat", [])
 
     _stack: list[tuple[int, int]] = []
+    # Precompute TOC parent label for each entry from the tree hierarchy
+    toc_parent_map: dict[str, str | None] = {}
     for i, entry in enumerate(toc_flat):
         lvl = entry.get("level", 0)
         if not entry.get("label"):
@@ -2104,6 +2105,7 @@ def resolve_book_headings(meta: dict, pages_iter):
                     parent["page_id"] = pid
                 else:
                     break
+        toc_parent_map[entry["label"]] = toc_flat[_stack[-1][1]].get("label") if _stack else None
         _stack.append((lvl, i))
 
     sorted_toc = sorted(
@@ -2120,7 +2122,7 @@ def resolve_book_headings(meta: dict, pages_iter):
         # a different namespace that must NOT be used for TOC matching.
         # Fall back to page_id only for legacy data that pre-dates this fix.
         pid = page.get("url_page_id") or page.get("page_id")
-        page_toc_new: list[tuple[str, int, str]] = []
+        page_toc_new: list[tuple[str, int, str, str | None]] = []
 
         if pid is not None:
             while toc_idx < len(sorted_toc) and sorted_toc[toc_idx]["page_id"] <= pid:
@@ -2135,13 +2137,14 @@ def resolve_book_headings(meta: dict, pages_iter):
                 label = entry["label"]
                 if label:
                     label = label.strip()
+                    parent_text = toc_parent_map.get(label)
                     breadcrumb_stack.append((number, label, level))
-                    page_toc_new.append((label, level, number))
+                    page_toc_new.append((label, level, number, parent_text))
                 toc_idx += 1
 
         if page_toc_new:
-            labels = [l for l, _, _ in page_toc_new]
-            numbers = [n for _, _, n in page_toc_new]
+            labels = [l for l, _, _, _ in page_toc_new]
+            numbers = [n for _, _, n, _ in page_toc_new]
             page["toc_breadcrumb"] = " • ".join(labels)
             page["toc_number"] = (
                 f"{numbers[0]}-{numbers[-1]}" if len(numbers) > 1 else numbers[0]
@@ -2211,7 +2214,7 @@ def resolve_book_headings(meta: dict, pages_iter):
         existing_child_count = 0
         if deepest_number != "0":
             existing_child_count = sum(
-                1 for _, _, num in page_toc_new
+                1 for _, _, num, _ in page_toc_new
                 if num.startswith(f"{deepest_number}.")
                 and num.count(".") == deepest_number.count(".") + 1
             )
@@ -2242,7 +2245,37 @@ def resolve_book_headings(meta: dict, pages_iter):
                 "implicit": False,
             })
 
+        # Mark headings whose first position coincides with a bracket heading
+        # as "bracket_matched" — these are real content headings, not just
+        # TOC structural labels. Used by the renumber function.
+        for h in resolved:
+            if not h.get("auto") and not h.get("implicit"):
+                if tuple(h["positions"][0]) in bracket_positions:
+                    h["bracket_matched"] = True
+
         resolved.sort(key=lambda h: h["positions"][0])
+
+        # Same-page rendering fix: when a child appears before its TOC parent
+        # in content order, but the parent is NOT a real content heading
+        # (not bracket_matched), promote BOTH to page-top with parent first.
+        # Walk backwards so nested moves don't break indices.
+        for i in range(len(resolved) - 1, -1, -1):
+            h = resolved[i]
+            parent_text = h.get("toc_parent_text")
+            if not parent_text:
+                continue
+            for j, ph in enumerate(resolved):
+                if (ph.get("text") == parent_text
+                        and not ph.get("bracket_matched")
+                        and not ph.get("auto")
+                        and not ph.get("implicit")):
+                    if i < j:
+                        # Child before parent → promote both to page-top,
+                        # parent before child
+                        ph["at_page_top"] = True
+                        h["at_page_top"] = True
+                        resolved.insert(i, resolved.pop(j))
+                    break
 
         page["resolved_headings"] = resolved
         page["echo_suppressed_positions"] = echo_suppressed  # render path uses this
@@ -2264,13 +2297,11 @@ def materialize_resolved_pages(meta: dict, pages_path: Path, resolved_path: Path
 
 
 def _renumber_headings_by_document_order(resolved_path: Path) -> None:
-    """Renumber all resolved headings by content order instead of TOC order.
+    """Renumber headings by content order when a real parent is
+    bracket_matched and on a different page from its child.
 
-    When a child heading appears before its TOC parent in the document
-    (e.g. book 909: *ملخص البحث* precedes *المقدمة*), the heading is
-    promoted to top-level and numbered sequentially.  Subsequent headings
-    that DO have their TOC parent in the ancestry stack keep their
-    original level and get standard dotted numbering.
+    Books without any bracket_matched parent heading keep their original
+    TOC-based numbering (no change).
     """
     pages: list[dict] = []
     with open(resolved_path, "r", encoding="utf-8") as f:
@@ -2278,6 +2309,40 @@ def _renumber_headings_by_document_order(resolved_path: Path) -> None:
             line = line.strip()
             if line:
                 pages.append(json.loads(line))
+
+    # Guard: renumber when any heading's TOC parent is bracket_matched AND
+    # the heading appears BEFORE its parent in content order (i.e. the TOC
+    # hierarchy doesn't match content flow).  The rendering-order fix in
+    # resolve_book_headings handles same-page reordering, but it cannot
+    # fix numbers when a heading's parent relationship is inconsistent
+    # with the actual content order.
+    heading_by_text: dict[str, list[tuple[int, dict]]] = {}
+    for page_idx, page in enumerate(pages):
+        for h in page.get("resolved_headings", []):
+            heading_by_text.setdefault(h.get("text", ""), []).append((page_idx, h))
+    needs_renumber = False
+    for page_idx, page in enumerate(pages):
+        for h in page.get("resolved_headings", []):
+            parent_text = h.get("toc_parent_text")
+            if not parent_text:
+                continue
+            # Find parent heading(s) with matching text
+            parent_candidates = heading_by_text.get(parent_text, [])
+            for pp_idx, ph in parent_candidates:
+                if not ph.get("bracket_matched") or ph.get("implicit"):
+                    continue
+                # Compare positions (page_idx, para_idx, line_idx)
+                child_pos = (page_idx, h["positions"][0][0], h["positions"][0][1])
+                parent_pos = (pp_idx, ph["positions"][0][0], ph["positions"][0][1])
+                if child_pos < parent_pos:
+                    needs_renumber = True
+                    break
+            if needs_renumber:
+                break
+        if needs_renumber:
+            break
+    if not needs_renumber:
+        return  # preserve original numbering
 
     flat: list[tuple[int, int, int, int, dict]] = []
     for page_idx, page in enumerate(pages):
@@ -2406,7 +2471,7 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
     has_body = paras or page.get("text")
     if has_body:
         _open_entry()
-        for h in sorted(page_start_headings, key=lambda x: x["positions"][0]):
+        for h in page_start_headings:
             parts.append(_heading_html(h))
 
     if paras:
