@@ -2263,66 +2263,6 @@ def materialize_resolved_pages(meta: dict, pages_path: Path, resolved_path: Path
     return count
 
 
-def _renumber_headings_by_document_order(resolved_path: Path) -> None:
-    """Renumber all resolved headings by content order instead of TOC order.
-
-    When a child heading appears before its TOC parent in the document
-    (e.g. book 909: *ملخص البحث* precedes *المقدمة*), the heading is
-    promoted to top-level and numbered sequentially.  Subsequent headings
-    that DO have their TOC parent in the ancestry stack keep their
-    original level and get standard dotted numbering.
-    """
-    pages: list[dict] = []
-    with open(resolved_path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                pages.append(json.loads(line))
-
-    flat: list[tuple[int, int, int, int, dict]] = []
-    for page_idx, page in enumerate(pages):
-        for h in page.get("resolved_headings", []):
-            pos = h["positions"][0]
-            flat.append((page_idx, pos[0], pos[1], h["level"], h))
-    if not flat:
-        return
-
-    flat.sort(key=lambda x: (x[0], x[1], x[2]))
-
-    counters = [0] * 20
-    stack: list[tuple[int, int]] = []
-
-    for page_idx, pi, li, orig_level, heading in flat:
-        while stack and stack[-1][1] >= orig_level:
-            stack.pop()
-
-        if stack:
-            eff_level = orig_level
-        else:
-            eff_level = 0
-
-        counters[eff_level] += 1
-        for i in range(eff_level + 1, len(counters)):
-            counters[i] = 0
-
-        heading["number"] = ".".join(
-            str(counters[i]) for i in range(eff_level + 1)
-        )
-        stack.append((eff_level, orig_level))
-
-    # Sync unanchored_toc_entries numbers to match renumbered headings
-    for page in pages:
-        for ue in page.get("unanchored_toc_entries", []):
-            for h in page.get("resolved_headings", []):
-                if h.get("implicit") and h["text"] == ue["label"] and h["level"] == ue["level"]:
-                    ue["number"] = h["number"]
-                    break
-
-    with open(resolved_path, "w", encoding="utf-8") as f:
-        for page in pages:
-            f.write(_fast_json(page, indent=False) + "\n")
-
-
 def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
                        vol_num_ref: list) -> tuple[str, int]:
     parts = []
@@ -2763,8 +2703,6 @@ def _build_book_outputs(meta: dict, author_info: dict, book_dir: Path,
     print(f"[*] Resolving headings for book {book_id} ...")
     n_resolved = materialize_resolved_pages(meta, pages_path, resolved_path)
     print(f"    → {n_resolved} pages resolved → {resolved_path}")
-    _renumber_headings_by_document_order(resolved_path)
-    print(f"    → headings renumbered by content order")
 
     # ── assemble combined JSON ───────────────────────────────────────────
     pages = load_pages_jsonl(resolved_path)

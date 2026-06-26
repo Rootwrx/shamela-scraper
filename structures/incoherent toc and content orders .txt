@@ -41,3 +41,9 @@ the generate pdf  is keep keept with the same disorders  i.e :
 
 suggested fix:
 instead i think we should take the order in the content as the correct one and adjust or correct the order in the toc
+
+i.e in the generated  pdf outlines
+it should someting like
+1 -ملخص البحث
+    2 المقدمة
+    2.1  -خطة البحث
