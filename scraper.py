@@ -1513,6 +1513,9 @@ def _build_html_css(meta: dict) -> str:
         flex: 1;
         position: relative;
         background: linear-gradient(180deg, #fffcf2 0%, #fff 50%, #fef9ed 100%);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
     }}
 
     .cover-corner {{
