@@ -1546,8 +1546,8 @@ def _build_html_css(meta: dict) -> str:
         @top-left {{
             content: counter(page);
             font-family: {font_body};
-            font-size: 8pt;
-            font-weight: 500;
+            font-size: 14pt;
+            font-weight: 700;
             color: {RUST};
             padding-left: 0.5em;
         }}
@@ -1559,8 +1559,8 @@ def _build_html_css(meta: dict) -> str:
         @bottom-center {{
             content: "— " counter(page) " —";
             font-family: {font_body};
-            font-size: 9pt;
-            font-weight: 500;
+            font-size: 14pt;
+            font-weight: 700;
             color: {RUST};
         }}
         @bottom-left  {{ content: none; }}
@@ -2924,6 +2924,9 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
         # Source
         fh.write(f'<p class="source">المصدر: {_e(meta.get("url",""))} | '
                  f'تاريخ التحميل: {scraped_date}</p>\n')
+        fh.write('<p style="color:#c0392b;font-size:10pt;'
+                 'text-align:center;margin-top:10px;">'
+                 'مُستَخرَج من المكتبة الشاملة</p>\n')
 
         fh.write('</div><!-- cover-frame-inner -->\n')
         fh.write('</div><!-- cover-frame-outer -->\n')
