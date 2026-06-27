@@ -1456,7 +1456,6 @@ def _build_html_css(meta: dict) -> str:
         background: linear-gradient(180deg, {PARCHMENT} 0%, {CREAM} 25%, #fffdf5 50%, {CREAM} 75%, {PARCHMENT} 100%);
     }}
     @page :first {{
-        size: A4;
         margin: 0;
         background: linear-gradient(180deg, {PARCHMENT} 0%, {CREAM} 25%, #fffdf5 50%, {CREAM} 75%, {PARCHMENT} 100%);
         @top-left     {{ content: none; }}
@@ -1521,6 +1520,7 @@ def _build_html_css(meta: dict) -> str:
 
     .cover-corner {{
         position: absolute;
+        width: 2.5cm;
         height: 2.5cm;
         border-color: {GOLD_D};
         border-style: solid;
@@ -1530,8 +1530,7 @@ def _build_html_css(meta: dict) -> str:
         line-height: 1;
     }}
     .cover-corner-tl {{
-        top: 0.2cm; right: 50%;
-        left: 0.2cm;
+        top: 0.2cm; right: 0.2cm;
         border-top-width: 3px;
         border-right-width: 3px;
         padding-top: 0.15cm;
@@ -1539,8 +1538,7 @@ def _build_html_css(meta: dict) -> str:
         text-align: right;
     }}
     .cover-corner-tr {{
-        top: 0.2cm; left: 50%;
-        right: 0.2cm;
+        top: 0.2cm; left: 0.2cm;
         border-top-width: 3px;
         border-left-width: 3px;
         padding-top: 0.15cm;
@@ -1548,8 +1546,7 @@ def _build_html_css(meta: dict) -> str:
         text-align: left;
     }}
     .cover-corner-bl {{
-        bottom: 0.2cm; right: 50%;
-        left: 0.2cm;
+        bottom: 0.2cm; right: 0.2cm;
         border-bottom-width: 3px;
         border-right-width: 3px;
         padding-bottom: 0.15cm;
@@ -1557,30 +1554,12 @@ def _build_html_css(meta: dict) -> str:
         text-align: right;
     }}
     .cover-corner-br {{
-        bottom: 0.2cm; left: 50%;
-        right: 0.2cm;
+        bottom: 0.2cm; left: 0.2cm;
         border-bottom-width: 3px;
         border-left-width: 3px;
         padding-bottom: 0.15cm;
         padding-left: 0.15cm;
         text-align: left;
-    }}
-
-    .cover-line-left {{
-        position: absolute;
-        left: 0.2cm;
-        top: 2.7cm;
-        bottom: 2.7cm;
-        width: 3px;
-        background: {GOLD_D};
-    }}
-    .cover-line-right {{
-        position: absolute;
-        right: 0.2cm;
-        top: 2.7cm;
-        bottom: 2.7cm;
-        width: 3px;
-        background: {GOLD_D};
     }}
 
     .cover-ornament-top {{
@@ -2778,16 +2757,11 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
         fh.write('<div class="cover-frame-outer">\n')
         fh.write('<div class="cover-frame-inner">\n')
 
-        # Corner ornaments — each top/bottom pair spans 50% of the width,
-        # meeting at centre, forming a continuous horizontal line. Side
-        # connectors bridge the gap between top and bottom corners,
-        # completing a continuous rectangular frame.
+        # Corner ornaments
         fh.write('<div class="cover-corner cover-corner-tl">&#10022;</div>\n')
         fh.write('<div class="cover-corner cover-corner-tr">&#10022;</div>\n')
         fh.write('<div class="cover-corner cover-corner-bl">&#10022;</div>\n')
         fh.write('<div class="cover-corner cover-corner-br">&#10022;</div>\n')
-        fh.write('<div class="cover-line-left"></div>\n')
-        fh.write('<div class="cover-line-right"></div>\n')
 
         # Top ornament row
         fh.write('<div class="cover-ornament-top">&#10022; &#10023; &#10022; &#10023; &#10022;</div>\n')
