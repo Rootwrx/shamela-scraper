@@ -3024,16 +3024,21 @@ def _build_book_outputs(meta: dict, author_info: dict, book_dir: Path,
     print(f"    → headings renumbered by content order")
 
     # ── assemble combined JSON ───────────────────────────────────────────
-    pages = load_pages_jsonl(resolved_path)
-    data = {"meta": meta, "pages": pages}
-    if author_info and not author_info.get("error") and author_info.get("bio"):
-        data["author_info"] = author_info
-    json_path = book_dir / f"book_{book_id}.json"
-    atomic_write_json(json_path, data)
-    print(f"  [json] saved → {json_path}  ({len(pages)} pages)")
-
-    del pages
-    import gc; gc.collect()
+    # NOTE: skipped by default to save RAM on large books (17K-page Tafsir
+    # al-Tabari would consume several hundred MB).  The individual data
+    # sources (pages.jsonl, pages_resolved.jsonl, meta.json, author_info.json)
+    # are always available on disk — no information is lost.
+    #
+    # Re-enable for smaller books or if you need a single-file export:
+    #     pages = load_pages_jsonl(resolved_path)
+    #     data = {"meta": meta, "pages": pages}
+    #     if author_info and not author_info.get("error") and author_info.get("bio"):
+    #         data["author_info"] = author_info
+    #     json_path = book_dir / f"book_{book_id}.json"
+    #     atomic_write_json(json_path, data)
+    #     print(f"  [json] saved → {json_path}  ({len(pages)} pages)")
+    #     del pages
+    #     import gc; gc.collect()
 
     # ── PDF ───────────────────────────────────────────────────────────────
     if not args.json_only:
