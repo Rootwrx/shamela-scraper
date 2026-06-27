@@ -438,12 +438,15 @@ def fetch_book_meta(session: requests.Session, book_id: int) -> dict:
     # for some books), then fall back to fetching page 1.
     def _extract_volumes(html_soup) -> tuple[list[int], list[str]] | None:
         vol_links = html_soup.select("ul.dropdown-menu a[href*='/book/']")
-        vp, vl = [], []
+        vp, vl, seen = [], [], set()
         for a in vol_links:
             m = re.search(r"/book/\d+/(\d+)", a["href"])
             if m:
-                vp.append(int(m.group(1)))
-                vl.append(a.get_text(strip=True))
+                pid = int(m.group(1))
+                if pid not in seen:
+                    seen.add(pid)
+                    vp.append(pid)
+                    vl.append(a.get_text(strip=True))
         return (vp, vl) if vp else None
 
     vol_data = _extract_volumes(soup)
@@ -795,6 +798,78 @@ def _pages_by_volume(pages_iter, vol_start_pages: list[int], vol_idx: int):
             continue
         if hi is not None and pid > hi:
             break
+        yield page
+
+
+def _find_volume_index(pid: int, vol_start_pages: list[int]) -> int:
+    """Return the 0-based volume index that *pid* belongs to."""
+    for vi, start in enumerate(vol_start_pages):
+        if pid < start:
+            return vi - 1
+    return len(vol_start_pages) - 1
+
+
+def _prefix_headings_by_juz(pages_iter, vol_start_pages: list[int]):
+    """Prepend 1-based volume number to heading numbers, resetting
+    top-level numbering within each juz.
+
+    Pass 1 — find level-0 headings per volume and assign new sequential numbers.
+    Pass 2 — apply the mapping and prepend juz prefix.
+    """
+    # Consume into a list so we can do two passes
+    pages: list[dict] = list(pages_iter)
+
+    # Collect the first original top-level number per volume (our offset)
+    vol_first: dict[int, int] = {}
+    for page in pages:
+        pid = page.get("url_page_id") or page.get("page_id")
+        if pid is None:
+            continue
+        vi = _find_volume_index(pid, vol_start_pages)
+        if vi < 0:
+            continue
+        if vi in vol_first:
+            continue
+        for h in page.get("resolved_headings", []):
+            if h.get("level") == 0 and h.get("number"):
+                m = re.match(r"\d+", h["number"])
+                if m:
+                    vol_first[vi] = int(m.group())
+                    break
+
+    # If a volume has no level-0 headings (e.g. intro only), give it a default
+    n_vols = len(vol_start_pages)
+    for vi in range(n_vols):
+        vol_first.setdefault(vi, 1)
+
+    # Build offset: start each volume's headings at 1
+    vol_offset = {vi: vol_first[vi] - 1 for vi in range(n_vols)}
+
+    # Apply: subtract offset from top-level part, then prepend juz number
+    for page in pages:
+        pid = page.get("url_page_id") or page.get("page_id")
+        if pid is None:
+            continue
+        vi = _find_volume_index(pid, vol_start_pages)
+        offset = vol_offset.get(vi, 0)
+        prefix = vi + 1
+        for h in page.get("resolved_headings", []):
+            parts = h["number"].split(".")
+            if parts and parts[0].isdigit():
+                sub = int(parts[0]) - offset
+                if sub < 1:
+                    sub = 1
+                parts[0] = str(sub)
+                h["number"] = f"{prefix}.{'.'.join(parts)}"
+        for ue in page.get("unanchored_toc_entries", []):
+            if ue.get("number"):
+                parts = ue["number"].split(".")
+                if parts and parts[0].isdigit():
+                    sub = int(parts[0]) - offset
+                    if sub < 1:
+                        sub = 1
+                    parts[0] = str(sub)
+                    ue["number"] = f"{prefix}.{'.'.join(parts)}"
         yield page
 
 
@@ -1686,17 +1761,16 @@ def _build_html_css(meta: dict) -> str:
 
     /* Volume divider splash */
     .volume-divider {{
-        page-break-before: always;
-        page-break-after: always;
-        text-align: center;
-        padding-top: 7cm;
-        background: #fdfaf4;
+        margin: 0 0 15px 0;
+        padding: 0;
     }}
     .volume-divider h2 {{
-        font-size: 30pt;
-        color: {GOLD};
+        font-size: 18pt;
+        color: #c0392b;
         border: none;
-        letter-spacing: 0.08em;
+        margin: 0 0 10px 0;
+        padding: 5px 0;
+        letter-spacing: 0.05em;
     }}
 
     /* ═══════════════════════════════════════════════════════
@@ -2779,10 +2853,12 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
     if volume_label is None:
         vol_starts_list = sorted(meta.get("volume_start_pages", []))
         vol_boundaries = set(vol_starts_list)
+        vol_labels_list = meta.get("volume_labels", [])
     else:
         vol_starts_list = []
         vol_boundaries = set()
-    vol_num = [1]   # mutable reference
+        vol_labels_list = []
+    vol_num = [1]   # mutable reference (1-indexed)
 
     scraped_date = datetime.date.today().strftime("%Y-%m-%d")
 
@@ -2872,14 +2948,22 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
         buf: list[str] = []
         first_page = True
 
+        # First section (juz 1) — no page break, flows after نص الكتاب heading
+        buf.append('<div class="section" style="page-break-before:auto;">\n')
+        # If volumes exist, insert juz 1 label before first content
+        if vol_starts_list and vol_labels_list:
+            buf.append(f'<div class="volume-divider">'
+                        f'<h2>الجزء {_e(vol_labels_list[0])}</h2></div>\n')
+
         for page in _ensure_resolved(meta, pages_iter):
             pid = page.get("page_id")
 
             if pid and pid in vol_boundaries and not first_page:
                 buf.append('</div>\n')
-                buf.append(f'<div class="volume-divider">'
-                            f'<h2>الجزء {_e(str(vol_num[0] + 1))}</h2></div>\n')
                 buf.append('<div class="section">\n')
+                vol_label = vol_labels_list[vol_num[0]] if vol_labels_list else str(vol_num[0] + 1)
+                buf.append(f'<div class="volume-divider">'
+                            f'<h2>الجزء {_e(vol_label)}</h2></div>\n')
                 vol_num[0] += 1
 
             frag, _ = _render_page_html(page, toc_by_page, vol_boundaries, vol_num)
@@ -3096,7 +3180,20 @@ def _build_book_outputs(meta: dict, author_info: dict, book_dir: Path,
     if not args.json_only:
         vol_pages = meta.get("volume_start_pages")
         vol_labels = meta.get("volume_labels")
-        has_volumes = vol_pages and vol_labels and len(vol_pages) > 1
+        # Dedup in case old meta.json has duplicate entries (top+bottom dropdowns)
+        if vol_pages and vol_labels:
+            deduped_pages, deduped_labels = [], []
+            seen = set()
+            for p, l in zip(vol_pages, vol_labels):
+                if p not in seen:
+                    seen.add(p)
+                    deduped_pages.append(p)
+                    deduped_labels.append(l)
+            if len(deduped_pages) != len(vol_pages):
+                vol_pages, vol_labels = deduped_pages, deduped_labels
+                meta["volume_start_pages"] = vol_pages
+                meta["volume_labels"] = vol_labels
+        has_volumes = vol_pages and vol_labels and len(vol_pages) > 1 and not getattr(args, "single_pdf", False)
         if has_volumes:
             n_vols = len(vol_pages)
             for vi in range(n_vols):
@@ -3112,13 +3209,22 @@ def _build_book_outputs(meta: dict, author_info: dict, book_dir: Path,
                 vol_iter = _pages_by_volume(
                     iter_pages_jsonl(resolved_path), vol_pages, vi
                 )
+                vol_iter = _prefix_headings_by_juz(vol_iter, vol_pages)
                 build_pdf(meta, author_info, vol_iter, str(pdf_path),
                           flush_every=getattr(args, "flush_every", 50),
                           volume_label=label)
         else:
             pdf_path = book_dir / f"book_{book_id}.pdf"
-            print(f"[*] Building PDF for book {book_id} ...")
-            build_pdf(meta, author_info, iter_pages_jsonl(resolved_path), str(pdf_path),
+            pages_iter = iter_pages_jsonl(resolved_path)
+            if vol_pages and len(vol_pages) > 1 and getattr(args, "single_pdf", False):
+                if getattr(args, "no_juz_outline", False):
+                    print(f"[*] Building combined PDF for book {book_id} (plain, no juz outline) ...")
+                else:
+                    pages_iter = _prefix_headings_by_juz(pages_iter, vol_pages)
+                    print(f"[*] Building combined PDF for book {book_id} (with juz outline) ...")
+            else:
+                print(f"[*] Building PDF for book {book_id} ...")
+            build_pdf(meta, author_info, pages_iter, str(pdf_path),
                       flush_every=getattr(args, "flush_every", 50))
 
     # Only mark "done" when scraping was actually performed and completed.
@@ -3214,6 +3320,8 @@ def main():
     parser.add_argument("--cf_clearance", default=None, help="Cloudflare cf_clearance cookie value")
     parser.add_argument("--json_only", action="store_true", help="Only scrape + save JSON, skip PDF")
     parser.add_argument("--pdf_only", action="store_true", help="Rebuild PDF from already-scraped data, skip network page-scraping")
+    parser.add_argument("--single_pdf", action="store_true", help="Generate a single combined PDF even when the book has ajza'/volumes")
+    parser.add_argument("--no_juz_outline", action="store_true", help="With --single_pdf: build combined PDF without juz numbering in headings (old-style)")
     parser.add_argument("--force", action="store_true", help="Re-scrape books even if already marked done")
     parser.add_argument("--refresh_categories", action="store_true", help="Re-fetch category book listings instead of using cached manifest copy")
     parser.add_argument("--max_books", type=int, default=None, help="Cap total number of books processed this run (testing)")
