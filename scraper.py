@@ -432,15 +432,32 @@ def fetch_book_meta(session: requests.Session, book_id: int) -> dict:
     meta["toc_flat"] = flatten_toc(toc_tree)
     meta["toc_summary"] = toc_summary_stats(toc_tree)
 
-    # ── derive volume start page IDs from volume dropdown (if present)──
-    vol_links = soup.select("ul.dropdown-menu a[href*='/book/']")
-    volumes_pages = []
-    for a in vol_links:
-        m = re.search(r"/book/\d+/(\d+)", a["href"])
-        if m:
-            volumes_pages.append(int(m.group(1)))
-    if volumes_pages:
-        meta["volume_start_pages"] = volumes_pages
+    # ── derive volume start page IDs + labels from volume dropdown ──────
+    # The dropdown only exists on the full page HTML (/book/{id}/{pgnum}),
+    # NOT on the home page (/book/{id}).  Try the home page first (it works
+    # for some books), then fall back to fetching page 1.
+    def _extract_volumes(html_soup) -> tuple[list[int], list[str]] | None:
+        vol_links = html_soup.select("ul.dropdown-menu a[href*='/book/']")
+        vp, vl = [], []
+        for a in vol_links:
+            m = re.search(r"/book/\d+/(\d+)", a["href"])
+            if m:
+                vp.append(int(m.group(1)))
+                vl.append(a.get_text(strip=True))
+        return (vp, vl) if vp else None
+
+    vol_data = _extract_volumes(soup)
+    if vol_data is None:
+        # Home page didn't have the dropdown — fetch page 1's full HTML
+        try:
+            r3 = session.get(f"{BASE}/book/{book_id}/1", timeout=15)
+            r3.raise_for_status()
+            soup3 = BeautifulSoup(r3.text, "lxml")
+            vol_data = _extract_volumes(soup3)
+        except Exception:
+            pass   # no volume info available; single PDF as before
+    if vol_data is not None:
+        meta["volume_start_pages"], meta["volume_labels"] = vol_data
 
     return meta
 
@@ -759,6 +776,26 @@ def iter_pages_jsonl(pages_path: Path):
                 line = line.strip()
                 if line:
                     yield json.loads(line)
+
+
+def _pages_by_volume(pages_iter, vol_start_pages: list[int], vol_idx: int):
+    """Yield only pages whose url_page_id falls within volume *vol_idx*.
+
+    Volume boundaries are defined by *vol_start_pages* (e.g. [1, 183, 913, …]).
+    Pages are assumed to be yielded in ascending page-id order — the generator
+    stops early once it passes the volume's end.
+    """
+    lo = vol_start_pages[vol_idx]
+    hi = vol_start_pages[vol_idx + 1] - 1 if vol_idx + 1 < len(vol_start_pages) else None
+    for page in pages_iter:
+        pid = page.get("url_page_id") or page.get("page_id")
+        if pid is None:
+            continue
+        if pid < lo:
+            continue
+        if hi is not None and pid > hi:
+            break
+        yield page
 
 
 def _scan_pages_jsonl(pages_path: Path) -> tuple[int | None, int]:
@@ -2715,13 +2752,15 @@ def _ensure_resolved(meta: dict, pages_iter):
 
 
 def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path,
-                       flush_every: int = 50) -> None:
+                       flush_every: int = 50, volume_label: str | None = None) -> None:
     """
     Stream-write the full HTML document to *out_path* one page at a time.
     Memory usage is O(flush_every pages) instead of O(all pages).
 
     pages_iter may be a list or any iterable of page dicts.
     flush_every: write buffer to disk every N pages (default 50).
+    volume_label: when set (e.g. "1", "المقدمة"), this is a per-juz PDF —
+                  show the juz label on the cover and skip volume dividers.
     """
     import datetime
 
@@ -2737,8 +2776,12 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
                 (entry.get("label", ""), entry.get("level", 0))
             )
 
-    vol_starts_list = sorted(meta.get("volume_start_pages", []))
-    vol_boundaries = set(vol_starts_list)
+    if volume_label is None:
+        vol_starts_list = sorted(meta.get("volume_start_pages", []))
+        vol_boundaries = set(vol_starts_list)
+    else:
+        vol_starts_list = []
+        vol_boundaries = set()
     vol_num = [1]   # mutable reference
 
     scraped_date = datetime.date.today().strftime("%Y-%m-%d")
@@ -2779,6 +2822,12 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
 
         # Book title
         fh.write(f'<h1>{_e(meta.get("title", "كتاب"))}</h1>\n')
+
+        # Juz label on per-volume covers
+        if volume_label:
+            fh.write(f'<h2 style="text-align:center;color:#c9a84c;'
+                     f'margin:15px 0 5px 0;font-size:16pt;">'
+                     f'الجزء {_e(volume_label)}</h2>\n')
 
         # Meta info table
         rows = []
@@ -2849,9 +2898,11 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
 
 
 def build_pdf(meta: dict, author_info: dict, pages_iter, out_path: str,
-              flush_every: int = 50):
+              flush_every: int = 50, volume_label: str | None = None):
     """
     Build a PDF from *pages_iter* (list or generator of page dicts).
+
+    *volume_label* is forwarded to build_html_to_file for per-juz covers.
 
     Strategy (memory-safe):
       1. Stream-write HTML to <out_path>.html — O(flush_every) memory.
@@ -2863,7 +2914,8 @@ def build_pdf(meta: dict, author_info: dict, pages_iter, out_path: str,
     html_path = Path(out_path).with_suffix(".html")
 
     print(f"  [html] streaming HTML → {html_path} ...")
-    build_html_to_file(meta, author_info, pages_iter, html_path, flush_every=flush_every)
+    build_html_to_file(meta, author_info, pages_iter, html_path,
+                       flush_every=flush_every, volume_label=volume_label)
     print(f"  [html] done ({html_path.stat().st_size // 1024} KB)")
 
     if WeasyprintHTML is None:
@@ -3040,12 +3092,34 @@ def _build_book_outputs(meta: dict, author_info: dict, book_dir: Path,
     #     del pages
     #     import gc; gc.collect()
 
-    # ── PDF ───────────────────────────────────────────────────────────────
+    # ── PDF (per-juz if volumes exist, otherwise single) ──────────────────
     if not args.json_only:
-        pdf_path = book_dir / f"book_{book_id}.pdf"
-        print(f"[*] Building PDF for book {book_id} ...")
-        build_pdf(meta, author_info, iter_pages_jsonl(resolved_path), str(pdf_path),
-                  flush_every=getattr(args, "flush_every", 50))
+        vol_pages = meta.get("volume_start_pages")
+        vol_labels = meta.get("volume_labels")
+        has_volumes = vol_pages and vol_labels and len(vol_pages) > 1
+        if has_volumes:
+            n_vols = len(vol_pages)
+            for vi in range(n_vols):
+                label = vol_labels[vi]
+                lo = vol_pages[vi]
+                hi = vol_pages[vi + 1] - 1 if vi + 1 < n_vols else "end"
+                vol_suffix = label.replace(" ", "_")
+                if not vol_suffix:
+                    vol_suffix = str(vi + 1).zfill(3)
+                pdf_name = f"book_{book_id}_{vol_suffix}.pdf"
+                pdf_path = book_dir / pdf_name
+                print(f"[*] Building PDF for book {book_id}, juz '{label}' ({lo}–{hi}) → {pdf_name} ...")
+                vol_iter = _pages_by_volume(
+                    iter_pages_jsonl(resolved_path), vol_pages, vi
+                )
+                build_pdf(meta, author_info, vol_iter, str(pdf_path),
+                          flush_every=getattr(args, "flush_every", 50),
+                          volume_label=label)
+        else:
+            pdf_path = book_dir / f"book_{book_id}.pdf"
+            print(f"[*] Building PDF for book {book_id} ...")
+            build_pdf(meta, author_info, iter_pages_jsonl(resolved_path), str(pdf_path),
+                      flush_every=getattr(args, "flush_every", 50))
 
     # Only mark "done" when scraping was actually performed and completed.
     # --pdf_only must never change the scraping status, so interrupted
