@@ -1758,6 +1758,9 @@ def _build_html_css(meta: dict) -> str:
         page-break-before: always;
         counter-reset: page 1;
     }}
+    .section-text > h2:first-child {{
+        margin-top: 0;
+    }}
 
     /* Volume divider splash */
     .volume-divider {{
