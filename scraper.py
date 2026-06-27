@@ -817,10 +817,31 @@ def _prefix_headings_by_juz(pages_iter, vol_start_pages: list[int],
     Within each volume, headings are renumbered sequentially by their
     level and document order, so each volume starts at .1.
 
+    Heading levels are normalised so the minimum level in each volume
+    becomes 0 — the first heading always starts at 1 (or prefix.1).
+
     When *include_juz_prefix* is False (per-juz PDFs), heading numbers
     start from 1 without the volume prefix.
     """
     pages: list[dict] = list(pages_iter)
+
+    # Find the first heading's level per volume so we can normalise:
+    # the first heading (in document order) sets the base, so it
+    # always becomes simply 1 (or prefix.1) regardless of depth.
+    vol_base: dict[int, int] = {}
+    for page in pages:
+        pid = page.get("url_page_id") or page.get("page_id")
+        if pid is None:
+            continue
+        vi = _find_volume_index(pid, vol_start_pages)
+        if vi < 0:
+            continue
+        if vi in vol_base:
+            continue
+        for h in page.get("resolved_headings", []):
+            if h.get("number"):
+                vol_base[vi] = h.get("level", 0)
+                break
 
     current_vi = -1
     counters: list[int] = [0] * 20
@@ -841,16 +862,19 @@ def _prefix_headings_by_juz(pages_iter, vol_start_pages: list[int],
             counters = [0] * 20
 
         prefix = vi + 1
+        base = vol_base.get(vi, 0)
 
         for h in page.get("resolved_headings", []):
             if not h.get("number"):
                 continue
-            level = h.get("level", 0)
+            level = h.get("level", 0) - base
+            if level < 0:
+                level = 0
             if level >= len(counters):
                 counters.extend([0] * (level - len(counters) + 1))
-            # Backfill zero counters at lower levels (first heading in
-            # a volume may be deeper than level 0, e.g. the first heading
-            # after `نص الكتاب` could be at level 2).
+            # Backfill zero counters at lower levels — needed when a
+            # volume's first heading is deeper than its min level (e.g.
+            # volume starts with a level 2 heading but min level is 0).
             for i in range(level):
                 if counters[i] == 0:
                     counters[i] = 1
