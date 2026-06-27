@@ -809,67 +809,70 @@ def _find_volume_index(pid: int, vol_start_pages: list[int]) -> int:
     return len(vol_start_pages) - 1
 
 
-def _prefix_headings_by_juz(pages_iter, vol_start_pages: list[int]):
+def _prefix_headings_by_juz(pages_iter, vol_start_pages: list[int],
+                            include_juz_prefix: bool = True):
     """Prepend 1-based volume number to heading numbers, resetting
-    top-level numbering within each juz.
+    all levels of numbering within each volume.
 
-    Pass 1 — find level-0 headings per volume and assign new sequential numbers.
-    Pass 2 — apply the mapping and prepend juz prefix.
+    Within each volume, headings are renumbered sequentially by their
+    level and document order, so each volume starts at .1.
+
+    When *include_juz_prefix* is False (per-juz PDFs), heading numbers
+    start from 1 without the volume prefix.
     """
-    # Consume into a list so we can do two passes
     pages: list[dict] = list(pages_iter)
 
-    # Collect the first original top-level number per volume (our offset)
-    vol_first: dict[int, int] = {}
+    current_vi = -1
+    counters: list[int] = [0] * 20
+
     for page in pages:
         pid = page.get("url_page_id") or page.get("page_id")
         if pid is None:
+            yield page
             continue
+
         vi = _find_volume_index(pid, vol_start_pages)
         if vi < 0:
+            yield page
             continue
-        if vi in vol_first:
-            continue
-        for h in page.get("resolved_headings", []):
-            if h.get("level") == 0 and h.get("number"):
-                m = re.match(r"\d+", h["number"])
-                if m:
-                    vol_first[vi] = int(m.group())
-                    break
 
-    # If a volume has no level-0 headings (e.g. intro only), give it a default
-    n_vols = len(vol_start_pages)
-    for vi in range(n_vols):
-        vol_first.setdefault(vi, 1)
+        if vi != current_vi:
+            current_vi = vi
+            counters = [0] * 20
 
-    # Build offset: start each volume's headings at 1
-    vol_offset = {vi: vol_first[vi] - 1 for vi in range(n_vols)}
-
-    # Apply: subtract offset from top-level part, then prepend juz number
-    for page in pages:
-        pid = page.get("url_page_id") or page.get("page_id")
-        if pid is None:
-            continue
-        vi = _find_volume_index(pid, vol_start_pages)
-        offset = vol_offset.get(vi, 0)
         prefix = vi + 1
+
         for h in page.get("resolved_headings", []):
-            parts = h["number"].split(".")
-            if parts and parts[0].isdigit():
-                sub = int(parts[0]) - offset
-                if sub < 1:
-                    sub = 1
-                parts[0] = str(sub)
-                h["number"] = f"{prefix}.{'.'.join(parts)}"
+            if not h.get("number"):
+                continue
+            level = h.get("level", 0)
+            if level >= len(counters):
+                counters.extend([0] * (level - len(counters) + 1))
+            # Backfill zero counters at lower levels (first heading in
+            # a volume may be deeper than level 0, e.g. the first heading
+            # after `نص الكتاب` could be at level 2).
+            for i in range(level):
+                if counters[i] == 0:
+                    counters[i] = 1
+                    for j in range(i + 1, level + 1):
+                        counters[j] = 0
+            counters[level] += 1
+            for i in range(level + 1, len(counters)):
+                counters[i] = 0
+            if include_juz_prefix:
+                h["number"] = f"{prefix}.{'.'.join(str(counters[i]) for i in range(level + 1))}"
+            else:
+                h["number"] = ".".join(str(counters[i]) for i in range(level + 1))
+
         for ue in page.get("unanchored_toc_entries", []):
             if ue.get("number"):
-                parts = ue["number"].split(".")
-                if parts and parts[0].isdigit():
-                    sub = int(parts[0]) - offset
-                    if sub < 1:
-                        sub = 1
-                    parts[0] = str(sub)
-                    ue["number"] = f"{prefix}.{'.'.join(parts)}"
+                for h in page.get("resolved_headings", []):
+                    if (h.get("implicit")
+                            and h["text"] == ue["label"]
+                            and h["level"] == ue["level"]):
+                        ue["number"] = h["number"]
+                        break
+
         yield page
 
 
@@ -3215,7 +3218,7 @@ def _build_book_outputs(meta: dict, author_info: dict, book_dir: Path,
                 vol_iter = _pages_by_volume(
                     iter_pages_jsonl(resolved_path), vol_pages, vi
                 )
-                vol_iter = _prefix_headings_by_juz(vol_iter, vol_pages)
+                vol_iter = _prefix_headings_by_juz(vol_iter, vol_pages, include_juz_prefix=False)
                 build_pdf(meta, author_info, vol_iter, str(pdf_path),
                           flush_every=getattr(args, "flush_every", 50),
                           volume_label=label)
