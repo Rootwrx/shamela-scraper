@@ -1498,7 +1498,6 @@ def _build_html_css(meta: dict) -> str:
     }}
 
     .cover-frame-outer {{
-        border: 5px double {SEPIA};
         margin: 0;
         padding: 0.6cm;
         flex: 1;
