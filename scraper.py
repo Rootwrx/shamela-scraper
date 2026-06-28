@@ -3481,10 +3481,10 @@ def main():
     parser.add_argument("--book_ids", default=None, help="Comma-separated list of book IDs, e.g. 12762,667")
     parser.add_argument("--category_ids", default=None, help="Comma-separated list of category IDs, e.g. 13,33,40")
     parser.add_argument("--out_dir", default="./shamela_output", help="Root output directory")
-    parser.add_argument("--delay", type=float, default=0.25,
+    parser.add_argument("--delay", type=float, default=1, # 0.25
                         help="Base courtesy delay in seconds (default 0.25; "
                              "stagger only applied to first-batch pages)")
-    parser.add_argument("--workers", type=int, default=16,
+    parser.add_argument("--workers", type=int, default=4, # 16
                         help="Concurrent page-fetch threads (default 16; "
                              "increase for speed, decrease if rate-limited)")
     parser.add_argument("--start_page", type=int, default=1, help="First page ID to scrape (per book, if not resuming)")
