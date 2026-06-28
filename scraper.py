@@ -781,6 +781,35 @@ def iter_pages_jsonl(pages_path: Path):
                     yield json.loads(line)
 
 
+def _merge_intro_volumes(vol_start_pages: list[int], vol_labels: list[str]) -> tuple[list[int], list[str]]:
+    """Merge consecutive intro+content volume pairs into single volumes.
+
+    An "intro" volume has a non-numeric label (e.g. 'م 1') and the following
+    "content" volume has a numeric label (e.g. '1').  They are collapsed into
+    one volume that spans from the intro's start page to the content volume's
+    end, keeping the content volume's label.
+
+    This produces clean per-juz PDFs (one file per logical juz instead of two)
+    and correct volume prefixes in the combined PDF.
+    """
+    merged_pages: list[int] = []
+    merged_labels: list[str] = []
+    i = 0
+    n = len(vol_start_pages)
+    while i < n:
+        label = vol_labels[i]
+        is_intro = not label.strip().isdigit()
+        if is_intro and i + 1 < n and vol_labels[i + 1].strip().isdigit():
+            merged_pages.append(vol_start_pages[i])
+            merged_labels.append(vol_labels[i + 1])
+            i += 2
+        else:
+            merged_pages.append(vol_start_pages[i])
+            merged_labels.append(label)
+            i += 1
+    return merged_pages, merged_labels
+
+
 def _pages_by_volume(pages_iter, vol_start_pages: list[int], vol_idx: int):
     """Yield only pages whose url_page_id falls within volume *vol_idx*.
 
@@ -825,9 +854,11 @@ def _prefix_headings_by_juz(pages_iter, vol_start_pages: list[int],
     """
     pages: list[dict] = list(pages_iter)
 
-    # Find the first heading's level per volume so we can normalise:
-    # the first heading (in document order) sets the base, so it
-    # always becomes simply 1 (or prefix.1) regardless of depth.
+    # Find the first non-auto heading's level per volume so we can
+    # normalise: the first real (TOC-anchored) heading sets the base,
+    # so it always becomes simply 1  regardless of depth.
+    # Auto headings (bracket-only, no TOC match) are excluded — they
+    # should not consume counter slots or skew the base level.
     vol_base: dict[int, int] = {}
     for page in pages:
         pid = page.get("url_page_id") or page.get("page_id")
@@ -839,7 +870,7 @@ def _prefix_headings_by_juz(pages_iter, vol_start_pages: list[int],
         if vi in vol_base:
             continue
         for h in page.get("resolved_headings", []):
-            if h.get("number"):
+            if h.get("number") and not h.get("auto"):
                 vol_base[vi] = h.get("level", 0)
                 break
 
@@ -866,6 +897,8 @@ def _prefix_headings_by_juz(pages_iter, vol_start_pages: list[int],
 
         for h in page.get("resolved_headings", []):
             if not h.get("number"):
+                continue
+            if h.get("auto"):
                 continue
             level = h.get("level", 0) - base
             if level < 0:
@@ -2423,6 +2456,15 @@ def resolve_book_headings(meta: dict, pages_iter):
             if pos in consumed_positions:
                 continue
             if _normalize_ar(bh["text"]) in located_norms:
+                # Bracket heading duplicates a located TOC heading — suppress
+                # the bracket line so it doesn't appear as a bare unnumbered
+                # paragraph alongside the numbered heading.
+                consumed_positions.add(pos)
+                for h in resolved:
+                    if not h.get("auto") and _normalize_ar(h["text"]) == _normalize_ar(bh["text"]):
+                        if pos not in {tuple(p) for p in h.get("suppress", [])}:
+                            h.setdefault("suppress", []).append(list(pos))
+                        break
                 continue
             auto_n += 1
             auto_level = min(deepest_level + 1, 6)
@@ -3226,6 +3268,14 @@ def _build_book_outputs(meta: dict, author_info: dict, book_dir: Path,
                 vol_pages, vol_labels = deduped_pages, deduped_labels
                 meta["volume_start_pages"] = vol_pages
                 meta["volume_labels"] = vol_labels
+        # Merge intro volumes (non-digit labels like 'م 1') with their
+        # following content volume (digit labels like '1') so each
+        # logical juz is one unit — fewer per-juz PDFs and correct
+        # volume prefixes in the combined PDF.
+        if vol_pages and vol_labels:
+            vol_pages, vol_labels = _merge_intro_volumes(vol_pages, vol_labels)
+            meta["volume_start_pages"] = vol_pages
+            meta["volume_labels"] = vol_labels
         has_volumes = vol_pages and vol_labels and len(vol_pages) > 1 and not getattr(args, "single_pdf", False)
         if has_volumes:
             n_vols = len(vol_pages)
