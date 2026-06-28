@@ -335,6 +335,14 @@ def fetch_book_meta(session: requests.Session, book_id: int) -> dict:
             elif label == "المحقق":
                 meta["editor"] = value
 
+    # ── category from breadcrumb ─────────────────────────────────────────
+    cat_link = soup.select_one("ol.breadcrumb a[href*='/category/']")
+    if cat_link:
+        m = re.search(r"/category/(\d+)", cat_link["href"])
+        if m:
+            meta["category_id"] = int(m.group(1))
+            meta["category_name"] = cat_link.get_text(strip=True)
+
     # ── author page link ────────────────────────────────────────────────
     author_link = soup.find("a", href=re.compile(r"/author/\d+"))
     if author_link:
@@ -3187,6 +3195,8 @@ def resolve_book_dir(out_dir: Path, manifest: Manifest, book_id: int,
     author_name = author_info.get("full_name") or meta.get("author") or "مؤلف_غير_معروف"
     title = meta.get("title") or f"book_{book_id}"
 
+    if not category_label and meta.get("category_id"):
+        category_label = meta.get("category_name", "category")
     cat_part = sanitize_filename(category_label) if category_label else "_uncategorized"
     author_part = sanitize_filename(f"{author_id}_{author_name}")
     book_part = sanitize_filename(f"{book_id}_{title}")
@@ -3225,6 +3235,11 @@ def process_book(session: requests.Session, book_id: int, out_dir: Path,
         print(f"[skip] book {book_id} ({entry.get('title','')}) — already done")
         return
 
+    if args.force and entry.get("dir"):
+        # With --force, clear the cached dir so resolve_book_dir recomputes
+        # it from scratch (e.g. if the category is now known from meta).
+        del entry["dir"]
+
     print(f"[*] Fetching metadata for book {book_id} ...")
     meta = fetch_book_meta(session, book_id)
     print(f"    title  : {meta.get('title','?')}")
@@ -3246,6 +3261,8 @@ def process_book(session: requests.Session, book_id: int, out_dir: Path,
             time.sleep(args.delay)
 
     book_dir = resolve_book_dir(out_dir, manifest, book_id, meta, author_info, category_label)
+    # resolve_book_dir may have derived the label from meta; capture it.
+    category_label = category_label or meta.get("category_name")
 
     entry["title"] = meta.get("title")
     entry["author"] = meta.get("author")
