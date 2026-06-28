@@ -1,5 +1,9 @@
 # Project History
 
+## v0.10.1 — Fix flat numbering when a parent heading appears after its child
+
+- **Minimum non-auto level used as volume base** — the base level is now computed as the *minimum* level across all non-auto headings in the volume, not the first one's. Fixes flat (`1, 2, 3, 4, 5...`) instead of hierarchical (`2, 2.1, 2.2, 3...`) numbering when a chapter-level heading (level 0) appears after a sub-section heading (level 1) in the same volume.
+
 ## v0.10.0 — Auto-heading exclusion, bracket dedup, intro-volume merging
 
 - **Auto headings excluded from numbering** — bracket-extracted headings without TOC match (`auto=True`) no longer consume counter slots or skew the volume's heading base level. Fixes flat numbering when a deep auto heading appeared before real content headings.
