@@ -854,27 +854,13 @@ def _prefix_headings_by_juz(pages_iter, vol_start_pages: list[int],
     """
     pages: list[dict] = list(pages_iter)
 
-    # Find the minimum non-auto heading level per volume so we can
-    # normalise: the shallowest heading sets the base level, so it
-    # always becomes 1 (or prefix.1) and deeper headings nest below.
-    # Auto headings (bracket-only, no TOC match) are excluded — they
-    # should not consume counter slots or skew the base level.
-    vol_base: dict[int, int] = {}
-    for page in pages:
-        pid = page.get("url_page_id") or page.get("page_id")
-        if pid is None:
-            continue
-        vi = _find_volume_index(pid, vol_start_pages)
-        if vi < 0:
-            continue
-        for h in page.get("resolved_headings", []):
-            if h.get("number") and not h.get("auto"):
-                cur = h.get("level", 0)
-                if vi not in vol_base or cur < vol_base[vi]:
-                    vol_base[vi] = cur
-
     current_vi = -1
     counters: list[int] = [0] * 20
+    # Track the minimum heading level seen so far per volume.
+    # This lets us normalise headings progressively: the first heading
+    # always becomes level 0, and any subsequent shallower heading
+    # (lower level number) becomes a new top-level section.
+    min_level_seen: dict[int, int] = {}
 
     for page in pages:
         pid = page.get("url_page_id") or page.get("page_id")
@@ -892,21 +878,26 @@ def _prefix_headings_by_juz(pages_iter, vol_start_pages: list[int],
             counters = [0] * 20
 
         prefix = vi + 1
-        base = vol_base.get(vi, 0)
+        base = min_level_seen.get(vi, 0)
 
         for h in page.get("resolved_headings", []):
             if not h.get("number"):
                 continue
             if h.get("auto"):
                 continue
-            level = h.get("level", 0) - base
+
+            raw_level = h.get("level", 0)
+
+            # Update progressive minimum level for this volume
+            if vi not in min_level_seen or raw_level < min_level_seen[vi]:
+                min_level_seen[vi] = raw_level
+                base = raw_level
+
+            level = raw_level - base
             if level < 0:
                 level = 0
             if level >= len(counters):
                 counters.extend([0] * (level - len(counters) + 1))
-            # Backfill zero counters at lower levels — needed when a
-            # volume's first heading is deeper than its min level (e.g.
-            # volume starts with a level 2 heading but min level is 0).
             for i in range(level):
                 if counters[i] == 0:
                     counters[i] = 1
@@ -2580,14 +2571,16 @@ def _renumber_headings_by_document_order(resolved_path: Path) -> None:
     # Check 2: sibling inversion — headings at the same level appear in a
     # different order in the content vs the TOC (common when Shamela's TOC
     # lists subtitles in wrong sequence but the actual page content is
-    # correct).  Compare consecutive non-auto, non-implicit headings in
-    # content order: if a later heading has a numerically smaller TOC number
-    # than an earlier one, the TOC order is wrong and renumbering is needed.
+    # correct).  Compare consecutive non-auto headings in content order:
+    # if a later heading has a numerically smaller TOC number than an
+    # earlier one, the TOC order is wrong and renumbering is needed.
+    # Implicit headings are included: they can be TOC-placed entries that
+    # appear at a page position before their numbered siblings.
     if not needs_renumber:
         valid: list[dict] = []
         for page_idx, page in enumerate(pages):
             for h in page.get("resolved_headings", []):
-                if not h.get("auto") and not h.get("implicit"):
+                if not h.get("auto"):
                     valid.append((page_idx, h))
         for i in range(len(valid) - 1):
             _, h_a = valid[i]
@@ -2600,6 +2593,73 @@ def _renumber_headings_by_document_order(resolved_path: Path) -> None:
 
     if not needs_renumber:
         return  # preserve original numbering
+
+    # ── Cross-page implicit-auto heading matching ───────────────────────
+    # A TOC heading on page X may have its actual bracket heading on page
+    # Y (when Shamela's TOC page pointer is off).  Match them here so the
+    # heading appears at the correct content position instead of creating
+    # two separate entries (an implicit at the wrong page + an auto orphan).
+    implicit_by_norm: dict[str, list[tuple[int, dict]]] = {}
+    auto_by_norm: dict[str, list[tuple[int, dict]]] = {}
+    for page_idx, page in enumerate(pages):
+        for h in page.get("resolved_headings", []):
+            norm = _normalize_ar(h["text"])
+            if h.get("implicit") and not h.get("auto"):
+                implicit_by_norm.setdefault(norm, []).append((page_idx, h))
+            elif h.get("auto") and not h.get("implicit"):
+                auto_by_norm.setdefault(norm, []).append((page_idx, h))
+
+    for norm, auto_entries in auto_by_norm.items():
+        implicit_entries = implicit_by_norm.get(norm)
+        if not implicit_entries:
+            continue
+        for auto_page_idx, auto_h in auto_entries:
+            # Find the nearest implicit heading on a DIFFERENT page
+            best = None
+            best_dist = None
+            for imp_page_idx, imp_h in implicit_entries:
+                if imp_page_idx == auto_page_idx:
+                    continue
+                dist = abs(imp_page_idx - auto_page_idx)
+                if best_dist is None or dist < best_dist:
+                    best = (imp_page_idx, imp_h)
+                    best_dist = dist
+            if best is None:
+                continue
+            imp_page_idx, imp_h = best
+            auto_pos = auto_h["positions"][0]
+            # Move the implicit heading object from its original page to
+            # the auto heading's page so document-order sorting uses the
+            # correct page index.
+            imp_page = pages[imp_page_idx]
+            imp_page["resolved_headings"] = [
+                h for h in imp_page["resolved_headings"]
+                if h is not imp_h
+            ]
+            auto_page = pages[auto_page_idx]
+            auto_page["resolved_headings"].append(imp_h)
+            # Set its position to the auto heading's position (where the
+            # actual content starts).  Replace the position list entirely
+            # — the old TOC position from the original page would be
+            # meaningless (and harmful) on the new page because it would
+            # suppress a real paragraph at that slot.
+            imp_h["positions"] = [auto_pos]
+            # Clear page-top flag — the heading now has a real inline
+            # position within the page's paragraph flow so it renders
+            # after preceding paragraphs (e.g. continuation of the
+            # previous section).
+            imp_h["at_page_top"] = False
+            # Suppress the auto heading's bracket line so it doesn't
+            # render as a bare paragraph.
+            auto_pos_list = list(auto_pos)
+            if auto_pos_list not in imp_h.get("suppress", []):
+                imp_h.setdefault("suppress", []).append(auto_pos_list)
+            # Remove the auto heading from its page
+            auto_page = pages[auto_page_idx]
+            auto_page["resolved_headings"] = [
+                h for h in auto_page["resolved_headings"]
+                if h is not auto_h
+            ]
 
     flat: list[tuple[int, int, int, int, dict]] = []
     for page_idx, page in enumerate(pages):
