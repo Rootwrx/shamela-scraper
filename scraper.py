@@ -854,9 +854,9 @@ def _prefix_headings_by_juz(pages_iter, vol_start_pages: list[int],
     """
     pages: list[dict] = list(pages_iter)
 
-    # Find the first non-auto heading's level per volume so we can
-    # normalise: the first real (TOC-anchored) heading sets the base,
-    # so it always becomes simply 1  regardless of depth.
+    # Find the minimum non-auto heading level per volume so we can
+    # normalise: the shallowest heading sets the base level, so it
+    # always becomes 1 (or prefix.1) and deeper headings nest below.
     # Auto headings (bracket-only, no TOC match) are excluded — they
     # should not consume counter slots or skew the base level.
     vol_base: dict[int, int] = {}
@@ -867,12 +867,11 @@ def _prefix_headings_by_juz(pages_iter, vol_start_pages: list[int],
         vi = _find_volume_index(pid, vol_start_pages)
         if vi < 0:
             continue
-        if vi in vol_base:
-            continue
         for h in page.get("resolved_headings", []):
             if h.get("number") and not h.get("auto"):
-                vol_base[vi] = h.get("level", 0)
-                break
+                cur = h.get("level", 0)
+                if vi not in vol_base or cur < vol_base[vi]:
+                    vol_base[vi] = cur
 
     current_vi = -1
     counters: list[int] = [0] * 20
