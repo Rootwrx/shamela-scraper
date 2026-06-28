@@ -85,14 +85,25 @@ except ImportError:
 
 # ─────────────────────────────────────────────────────────────────────────────
 BASE = "https://shamela.ws"
+
+# Must match the browser that generated cf_clearance.
+# These are for Chrome 124 on Windows — adjust if you used a different browser.
 HEADERS = {
     "User-Agent": (
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+        "Mozilla/5.0 (X11; Linux x86_64; rv:152.0) "
+        "Gecko/20100101 Firefox/152.0"
     ),
-    "Accept-Language": "ar,en;q=0.9",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "ar,en-US;q=0.5",
+    "Accept-Encoding": "gzip, deflate, br, zstd",
+    "sec-fetch-dest": "document",
+    "sec-fetch-mode": "navigate",
+    "sec-fetch-site": "none",
+    "sec-fetch-user": "?1",
+    "upgrade-insecure-requests": "1",
+    "Connection": "keep-alive",
+    "DNT": "1",
 }
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # SMALL UTILITIES
@@ -151,13 +162,15 @@ class Manifest:
 # SESSION
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def get_session(cf_clearance: str = None) -> requests.Session:
     s = requests.Session()
     s.headers.update(HEADERS)
     if cf_clearance:
+        # cf_clearance is tied to the IP + UA that solved the challenge.
+        # Also set __cf_bm if you have it (grab from browser DevTools → cookies).
         s.cookies.set("cf_clearance", cf_clearance, domain="shamela.ws")
     return s
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # TABLE OF CONTENTS — nested-tree parsing (handles deep / multi-level TOCs)
@@ -3483,7 +3496,13 @@ def main():
     if not args.book_id and not args.book_ids and not args.category_ids:
         parser.error("Provide at least one of --book_id, --book_ids, or --category_ids (or --status)")
 
-    session = get_session(args.cf_clearance)
+    cf_value = args.cf_clearance
+    if not cf_value:
+        try:
+            cf_value = Path("cf.txt").read_text().strip()
+        except FileNotFoundError:
+            pass
+    session = get_session(cf_value)
 
     queue = build_book_queue(session, args, manifest)
     if args.max_books:
