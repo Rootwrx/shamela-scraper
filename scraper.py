@@ -54,6 +54,7 @@ Usage
 
 import argparse
 import datetime
+import itertools
 import json
 import os
 import queue
@@ -64,7 +65,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-import requests
+from curl_cffi import requests
 from bs4 import BeautifulSoup
 
 try:
@@ -163,13 +164,22 @@ class Manifest:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def get_session(cf_clearance: str = None) -> requests.Session:
-    s = requests.Session()
-    s.headers.update(HEADERS)
-    if cf_clearance:
-        # cf_clearance is tied to the IP + UA that solved the challenge.
-        # Also set __cf_bm if you have it (grab from browser DevTools → cookies).
-        s.cookies.set("cf_clearance", cf_clearance, domain="shamela.ws")
+def get_session(user_agent: str = None) -> requests.Session:
+    s = requests.Session(use_thread_local_curl=True)
+
+    if user_agent:
+        ua_lower = user_agent.lower()
+        if "firefox/" in ua_lower:
+            s.impersonate = "firefox147"
+        elif "chrome/" in ua_lower or "edg/" in ua_lower:
+            s.impersonate = "chrome124"
+        else:
+            s.impersonate = "firefox147"
+        s.headers.update({**HEADERS, "User-Agent": user_agent})
+    else:
+        s.impersonate = "firefox147"
+        s.headers.update(HEADERS)
+
     return s
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -572,7 +582,7 @@ def fetch_category_books(session: requests.Session, category_id: int, delay: flo
         try:
             resp = session.get(url, params=params, timeout=20)
             resp.raise_for_status()
-        except requests.RequestException as e:
+        except requests.exceptions.RequestException as e:
             print(f"\n[!] Error fetching category {category_id} (page {page}): {e}")
             break
 
@@ -1004,7 +1014,7 @@ def _fetch_one(args_tuple) -> tuple[int, str | None, str | None]:
         nass = data.get("nass", "")
         html = f'<div data-page-id="{pid}" data-page-num="{pnum}" data-next-id="{nid}">{nass}</div>'
         return page_id, html, None
-    except requests.RequestException as e:
+    except requests.exceptions.RequestException as e:
         last_err = str(e)
 
     # Fallback: full-page HTML endpoint
@@ -1014,7 +1024,7 @@ def _fetch_one(args_tuple) -> tuple[int, str | None, str | None]:
             resp = session.get(url, timeout=25)
             resp.raise_for_status()
             return page_id, resp.text, None
-        except requests.RequestException as e:
+        except requests.exceptions.RequestException as e:
             last_err = str(e)
             if attempt < 3:
                 wait = attempt * 2
@@ -2969,7 +2979,7 @@ def _ensure_resolved(meta: dict, pages_iter):
         first = next(pages_iter)
     except StopIteration:
         return
-    import itertools
+
     chained = itertools.chain([first], pages_iter)
     if "resolved_headings" in first:
         yield from chained
@@ -3490,6 +3500,10 @@ def main():
     parser.add_argument("--start_page", type=int, default=1, help="First page ID to scrape (per book, if not resuming)")
     parser.add_argument("--limit", type=int, default=None, help="Max pages to scrape PER BOOK")
     parser.add_argument("--cf_clearance", default=None, help="Cloudflare cf_clearance cookie value")
+    parser.add_argument("--user-agent", "--ua", default=None,
+                        help="Your browser's User-Agent string. Must match the browser "
+                             "that generated cf_clearance.")
+
     parser.add_argument("--json_only", action="store_true", help="Only scrape + save JSON, skip PDF")
     parser.add_argument("--pdf_only", action="store_true", help="Rebuild PDF from already-scraped data, skip network page-scraping")
     parser.add_argument("--single_pdf", action="store_true", help="Generate a single combined PDF even when the book has ajza'/volumes")
@@ -3513,13 +3527,16 @@ def main():
     if not args.book_id and not args.book_ids and not args.category_ids:
         parser.error("Provide at least one of --book_id, --book_ids, or --category_ids (or --status)")
 
+    session = get_session(user_agent=args.user_agent)
+
     cf_value = args.cf_clearance
     if not cf_value:
         try:
             cf_value = Path("cf.txt").read_text().strip()
         except FileNotFoundError:
             pass
-    session = get_session(cf_value)
+    if cf_value:
+        session.cookies.set("cf_clearance", cf_value, domain="shamela.ws")
 
     queue = build_book_queue(session, args, manifest)
     if args.max_books:
