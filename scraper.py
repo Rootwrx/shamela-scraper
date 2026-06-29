@@ -2027,7 +2027,7 @@ def _plain_text(html_frag: str) -> str:
     return _html_mod.unescape(stripped)
 
 
-_BRACKET_STRIP_CHARS = "[]（）()「」【】《》〈〉"
+_BRACKET_STRIP_CHARS = "[]（）().「」【】《》〈〉"
 _TASHKEEL_RE = re.compile(r'[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]')
 
 def _normalize_ar(s: str) -> str:
