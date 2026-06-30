@@ -54,11 +54,13 @@ Usage
 
 import argparse
 import datetime
+import fcntl
 import itertools
 import json
 import os
 import queue
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -181,6 +183,163 @@ def get_session(user_agent: str = None) -> requests.Session:
         s.headers.update(HEADERS)
 
     return s
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CLOUDFLARE COOKIE MANAGER
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class CloudflareCookieManager:
+    """Transparent wrapper around a curl_cffi Session with auto CF-cookie refresh.
+
+    Calling ``.get()`` (or ``.request()``) will:
+
+    1. Load the current ``cf_clearance`` from ``cf.txt`` and inject it into
+       the session cookies.
+    2. Make the request.
+    3. If the response indicates a Cloudflare failure (403, challenge page):
+       a) Acquire a **cross-process file lock** so only one process runs the
+          refresh helper.
+       b) Run ``refresh_cf.py`` (sibling script) to copy the fresh cookie
+          from Firefox's cookie store into ``~/shamela/cf.txt``.
+       c) Reload the cookie from ``cf.txt``.
+       d) Retry the request **exactly once**.
+    4. Return the response.
+
+    Duck-types as a :class:`curl_cffi.requests.Session`: exposes ``.get()``,
+    ``.request()``, ``.cookies``, ``.headers``, ``.impersonate``.  Any
+    attribute not explicitly defined falls through to the underlying session
+    via :meth:`__getattr__`.
+    """
+
+    _LOCK_PATH = Path("/tmp/shamela_cf_refresh.lock")
+
+    def __init__(self, session, cf_txt: str | Path | None = None):
+        self._session = session
+        self._cf_txt = (
+            Path(cf_txt or Path.home() / "shamela" / "cf.txt")
+            .expanduser()
+            .resolve()
+        )
+        self._refresh_lock = threading.Lock()
+        self._load_cookie()
+
+    # ── cookie I/O ────────────────────────────────────────────────────
+
+    def _load_cookie(self):
+        """Read ``cf_txt`` and update the session cookie."""
+        try:
+            cf_value = self._cf_txt.read_text().strip()
+        except FileNotFoundError:
+            return
+        if cf_value:
+            self._session.cookies.set(
+                "cf_clearance", cf_value, domain="shamela.ws"
+            )
+
+    # ── Cloudflare detection ──────────────────────────────────────────
+
+    @staticmethod
+    def _is_cf_failure(resp) -> bool:
+        """Return ``True`` when *resp* looks like a Cloudflare block."""
+        if resp.status_code == 403:
+            return True
+        if resp.status_code != 200:
+            return False
+        snippet = (resp.text or "")[:2000].lower()
+        if "cf-browser-verification" in snippet:
+            return True
+        if "just a moment..." in snippet:
+            return True
+        return False
+
+    # ── refresh orchestration ─────────────────────────────────────────
+
+    def _refresh(self):
+        """Run ``refresh_cf.py`` under a cross-process file lock.
+
+        The lock ensures that when multiple workers/processes detect a
+        Cloudflare failure simultaneously, only **one** of them actually
+        runs the refresh helper.  The others wait until the lock is
+        released, then check the mtime of ``cf.txt`` — if it was modified
+        within the last 10 seconds they skip the script and just reload
+        the cookie.
+        """
+        with self._refresh_lock:
+            with open(self._LOCK_PATH, "w") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                try:
+                    # Has another process already refreshed cf.txt
+                    # while we were waiting for the lock?
+                    if self._cf_txt.exists():
+                        age = time.time() - self._cf_txt.stat().st_mtime
+                        if age < 10:
+                            self._load_cookie()
+                            return
+
+                    script = Path(__file__).parent / "refresh_cf.py"
+                    subprocess.run(
+                        [sys.executable, str(script)],
+                        check=True,
+                        timeout=120,
+                    )
+                    self._load_cookie()
+                except (subprocess.SubprocessError, FileNotFoundError) as exc:
+                    raise RuntimeError(
+                        f"Cloudflare cookie refresh failed: {exc}"
+                    ) from exc
+                finally:
+                    fcntl.flock(lock, fcntl.LOCK_UN)
+
+    # ── public request API ────────────────────────────────────────────
+
+    def request(self, method, url, **kwargs):
+        """Make a request with transparent CF-cookie refresh + single retry."""
+        self._load_cookie()
+        resp = self._session.request(method, url, **kwargs)
+        if self._is_cf_failure(resp):
+            print("  [!] Cloudflare challenge detected — refreshing cookie ...")
+            self._refresh()
+            resp = self._session.request(method, url, **kwargs)
+            if self._is_cf_failure(resp):
+                raise RuntimeError(
+                    "Cloudflare: request still failing after cookie refresh"
+                )
+        return resp
+
+    def get(self, url, **kwargs):
+        return self.request("GET", url, **kwargs)
+
+    # ── duck-typing: look like a curl_cffi Session ────────────────────
+
+    @property
+    def cookies(self):
+        return self._session.cookies
+
+    @cookies.setter
+    def cookies(self, value):
+        self._session.cookies = value
+
+    @property
+    def headers(self):
+        return self._session.headers
+
+    @headers.setter
+    def headers(self, value):
+        self._session.headers = value
+
+    @property
+    def impersonate(self):
+        return self._session.impersonate
+
+    @impersonate.setter
+    def impersonate(self, value):
+        self._session.impersonate = value
+
+    def __getattr__(self, name):
+        """Delegate any unknown attribute to the underlying session."""
+        return getattr(self._session, name)
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # TABLE OF CONTENTS — nested-tree parsing (handles deep / multi-level TOCs)
@@ -3639,16 +3798,15 @@ def main():
     if not args.book_id and not args.book_ids and not args.category_ids:
         parser.error("Provide at least one of --book_id, --book_ids, or --category_ids (or --status)")
 
-    session = get_session(user_agent=args.user_agent)
+    session = CloudflareCookieManager(
+        get_session(user_agent=args.user_agent),
+    )
 
-    cf_value = args.cf_clearance
-    if not cf_value:
-        try:
-            cf_value = Path("cf.txt").read_text().strip()
-        except FileNotFoundError:
-            pass
-    if cf_value:
-        session.cookies.set("cf_clearance", cf_value, domain="shamela.ws")
+    if args.cf_clearance:
+        cf_txt = Path.home() / "shamela" / "cf.txt"
+        cf_txt.parent.mkdir(parents=True, exist_ok=True)
+        cf_txt.write_text(args.cf_clearance)
+        session._load_cookie()
 
     queue = build_book_queue(session, args, manifest)
     if args.max_books:
