@@ -1,5 +1,31 @@
 # Project History
 
+## v0.11.0 — Arabic normalization, bracket-line exclusion, heading colors 0–9
+
+- **Arabic letter normalization in `_normalize_ar()`** — آ/أ/إ → ا, ى → ي, ة → ه, ؤ → و, ئ → ي. Fixes TOC vs body mismatches from common spelling variants.
+- **Arabic digit-prefix stripping in `_normalize_ar()`** — leading `١-`, `١.` etc. stripped so `١- رأى أرسطوطاليس` matches label `رأي أرسطوطاليس`.
+- **Bracket lines excluded from `flat_lines` matching** — grey `[heading]` meta-lines (auto-detected bracket headings) are no longer in `flat_lines` inside `_locate_toc_headings_in_page`. Prevents false-positive matches that placed child headings at bracket positions before the parent's body text.
+- **All heading levels rendered visibly** — removed `_should_hide_heading` and `_bookmark_only_html` logic. Every TOC heading gets a visible colored `<p>` in the output.
+- **CSS colors for levels 0–9** — 0 gold, 1 rust, 2 teal, 3 sepia, 4 green, 5 purple, 6 brown, 7 dark grey, 8 steel blue (`#2e6b8a`), 9 grey (`#555`). Implicit headings use their level color (not a special "implicit" class).
+- **`_strip_body_color()`** — removes Shamela teal `<span>` from body lines at heading positions.
+- **Body prefix stripping** — `_strip_heading_prefix()` walks normalized chars to remove the heading label from body text when `keep_line=True`.
+- **Duplicate page dedup** — `_ensure_resolved()` tracks seen `url_page_id` to prevent duplicate content.
+- **Bidirectional `keep_line` post-check** — runs unconditionally (both upgrades and downgrades).
+- **`_prefix_headings_by_juz` capping** — single-pdf numbering capped at 3 parts (x.y.z); subtitle-level headings (level ≥ 2 with juz prefix) get no number.
+- **Empty number guard** — `_heading_html()` checks for empty `h["number"]` to avoid bare period prefix.
+- **Removed fuzzy fallback** — dropped `_label_words()` and broad substring match from `_find_label_in_lines()`.
+
+### Problems fixed
+
+1. **Child heading appearing before parent body text (book 11812)** — TOC heading `رأي أرسطوطاليس بن نيقوماخوس` matched bracket line `[رأي أرسطوطاليس...]` (pi=1, before parent body) instead of the actual body heading `١- رأى أرسطوطاليس...` (pi=5). Fix: bracket lines excluded from `flat_lines` so TOC headings must match real body content.
+2. **Heading not matching due to Arabic letter variants** — TOC label `رأي` vs body text `رأى` (different ي/ى). Fix: normalize ى→ي, آ/أ/إ→ا, ة→ه, ؤ→و, ئ→ي in `_normalize_ar()`.
+3. **Heading not matching due to body digit prefix** — TOC label `رأي أرسطوطاليس` vs body `١- رأى أرسطوطاليس:`. Fix: strip leading `[\u0660-\u06690-9]+[\s\-\.\)\]\}]*` in `_normalize_ar()`.
+4. **Hidden headings at levels 4+** — `_should_hide_heading` suppressed headings beyond level 3. Fix: removed the function entirely.
+5. **Bookmarks-only headings** — `_bookmark_only_html` rendered headings as invisible PDF bookmarks. Fix: all headings now render as visible `<p>` with per-level color.
+6. **Implicit headings in rust color** — unmatched headings got CSS class `"implicit"` (rust/level 1 color). Fix: implicit headings use their actual level color.
+7. **Duplicate pages in output** — same page content appeared multiple times when `pages.jsonl` had duplicates. Fix: `_ensure_resolved()` dedups by `url_page_id`.
+8. **Fuzzy label matching causing false positives** — `_label_words()` and broad substring match in `_find_label_in_lines()` matched partial overlaps. Fix: removed fuzzy fallback entirely.
+
 ## v0.10.1 — Fix flat numbering when a parent heading appears after its child
 
 - **Minimum non-auto level used as volume base** — the base level is now computed as the *minimum* level across all non-auto headings in the volume, not the first one's. Fixes flat (`1, 2, 3, 4, 5...`) instead of hierarchical (`2, 2.1, 2.2, 3...`) numbering when a chapter-level heading (level 0) appears after a sub-section heading (level 1) in the same volume.
