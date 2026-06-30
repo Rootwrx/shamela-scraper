@@ -67,8 +67,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from curl_cffi import requests
 from bs4 import BeautifulSoup
+from curl_cffi import requests
 
 try:
     from weasyprint import HTML as WeasyprintHTML
@@ -77,14 +77,17 @@ except ImportError:  # pdf building simply unavailable until installed
 
 try:
     import orjson as _orjson
+
     def _fast_json(data, indent: bool = True) -> str:
         opts = _orjson.OPT_APPEND_NEWLINE
         if indent:
             opts |= _orjson.OPT_INDENT_2
         return _orjson.dumps(data, option=opts).decode()
 except ImportError:
+
     def _fast_json(data, indent: bool = True) -> str:
         return json.dumps(data, ensure_ascii=False, indent=2 if indent else None)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 BASE = "https://shamela.ws"
@@ -93,8 +96,7 @@ BASE = "https://shamela.ws"
 # These are for Chrome 124 on Windows — adjust if you used a different browser.
 HEADERS = {
     "User-Agent": (
-        "Mozilla/5.0 (X11; Linux x86_64; rv:152.0) "
-        "Gecko/20100101 Firefox/152.0"
+        "Mozilla/5.0 (X11; Linux x86_64; rv:152.0) Gecko/20100101 Firefox/152.0"
     ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
     "Accept-Language": "ar,en-US;q=0.5",
@@ -112,7 +114,9 @@ HEADERS = {
 # SMALL UTILITIES
 # ═══════════════════════════════════════════════════════════════════════════
 
-_ILLEGAL_CHARS = re.compile(r'[^\w\s\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF-]')
+_ILLEGAL_CHARS = re.compile(
+    r"[^\w\s\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF-]"
+)
 
 
 def sanitize_filename(name: str, max_len: int = 80, fallback: str = "unknown") -> str:
@@ -152,7 +156,11 @@ class Manifest:
 
     def __init__(self, out_dir: Path):
         self.path = Path(out_dir) / "manifest.json"
-        self.data = load_json(self.path, None) or {"books": {}, "categories": {}, "authors": {}}
+        self.data = load_json(self.path, None) or {
+            "books": {},
+            "categories": {},
+            "authors": {},
+        }
 
     def save(self):
         atomic_write_json(self.path, self.data)
@@ -183,6 +191,7 @@ def get_session(user_agent: str = None) -> requests.Session:
         s.headers.update(HEADERS)
 
     return s
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # CLOUDFLARE COOKIE MANAGER
@@ -217,9 +226,7 @@ class CloudflareCookieManager:
     def __init__(self, session, cf_txt: str | Path | None = None):
         self._session = session
         self._cf_txt = (
-            Path(cf_txt or Path.home() / "shamela" / "cf.txt")
-            .expanduser()
-            .resolve()
+            Path(cf_txt or Path.home() / "shamela" / "cf.txt").expanduser().resolve()
         )
         self._refresh_lock = threading.Lock()
         self._load_cookie()
@@ -233,9 +240,7 @@ class CloudflareCookieManager:
         except FileNotFoundError:
             return
         if cf_value:
-            self._session.cookies.set(
-                "cf_clearance", cf_value, domain="shamela.ws"
-            )
+            self._session.cookies.set("cf_clearance", cf_value, domain="shamela.ws")
 
     # ── Cloudflare detection ──────────────────────────────────────────
 
@@ -345,6 +350,7 @@ class CloudflareCookieManager:
 # TABLE OF CONTENTS — nested-tree parsing (handles deep / multi-level TOCs)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def parse_toc_tree(ul_tag, level: int = 0) -> list[dict]:
     """
     Recursively parse a <ul> of TOC <li><a>...</a><ul>...nested...</ul></li>
@@ -390,11 +396,13 @@ def flatten_toc(tree: list[dict]) -> list[dict]:
     """Depth-first flat list, each entry keeping its original nesting `level`."""
     flat = []
     for node in tree:
-        flat.append({
-            "label": node.get("label"),
-            "page_id": node.get("page_id"),
-            "level": node.get("level", 0),
-        })
+        flat.append(
+            {
+                "label": node.get("label"),
+                "page_id": node.get("page_id"),
+                "level": node.get("level", 0),
+            }
+        )
         if node.get("children"):
             flat.extend(flatten_toc(node["children"]))
     return flat
@@ -410,8 +418,9 @@ def _toc_has_lazy_nodes(tree: list[dict]) -> bool:
     return False
 
 
-def fetch_toc_children(session: requests.Session, book_id: int, tree: list[dict],
-                       delay: float = 0.3) -> None:
+def fetch_toc_children(
+    session: requests.Session, book_id: int, tree: list[dict], delay: float = 0.3
+) -> None:
     """
     Walk the TOC tree and, for every node that has an ``_exp_bu_id`` but no
     children yet, fetch its children from Shamela's AJAX endpoint:
@@ -428,7 +437,9 @@ def fetch_toc_children(session: requests.Session, book_id: int, tree: list[dict]
     Mutates *tree* in-place; returns nothing.
     """
     for node in tree:
-        exp_id = node.pop("_exp_bu_id", None)  # always clean up, even if no fetch needed
+        exp_id = node.pop(
+            "_exp_bu_id", None
+        )  # always clean up, even if no fetch needed
 
         has_children = bool(node.get("children"))
 
@@ -447,7 +458,9 @@ def fetch_toc_children(session: requests.Session, book_id: int, tree: list[dict]
                 time.sleep(delay)
             except Exception as e:
                 # Non-fatal: log and keep going with whatever we have
-                print(f"    [toc] warn: could not fetch node {exp_id} for book {book_id}: {e}")
+                print(
+                    f"    [toc] warn: could not fetch node {exp_id} for book {book_id}: {e}"
+                )
 
         # Recurse into already-present children (they may themselves have
         # _exp_bu_ids for grandchildren that were lazy-loaded)
@@ -469,6 +482,7 @@ def toc_summary_stats(tree: list[dict]) -> dict:
 # ═══════════════════════════════════════════════════════════════════════════
 # BOOK METADATA
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def fetch_book_meta(session: requests.Session, book_id: int) -> dict:
     """Fetch book card (title, author, publisher, nested TOC, volume boundaries)."""
@@ -515,7 +529,11 @@ def fetch_book_meta(session: requests.Session, book_id: int) -> dict:
     # ── author page link ────────────────────────────────────────────────
     author_link = soup.find("a", href=re.compile(r"/author/\d+"))
     if author_link:
-        meta["author_url"] = BASE + author_link["href"] if author_link["href"].startswith("/") else author_link["href"]
+        meta["author_url"] = (
+            BASE + author_link["href"]
+            if author_link["href"].startswith("/")
+            else author_link["href"]
+        )
         meta["author_id"] = re.search(r"/author/(\d+)", author_link["href"]).group(1)
 
     # ── TOC: parse from the book home page (fully expanded tree) ──────
@@ -568,8 +586,10 @@ def fetch_book_meta(session: requests.Session, book_id: int) -> dict:
         for div in soup_obj.find_all("div"):
             cls = " ".join(div.get("class", []))
             did = div.get("id", "")
-            if any(k in cls.lower() or k in did.lower()
-                   for k in ("fihris", "index", "toc", "contents")):
+            if any(
+                k in cls.lower() or k in did.lower()
+                for k in ("fihris", "index", "toc", "contents")
+            ):
                 ul = div.find("ul")
                 if ul:
                     return ul
@@ -585,10 +605,12 @@ def fetch_book_meta(session: requests.Session, book_id: int) -> dict:
         if not flat:
             return True
         bare = sum(
-            1 for n in flat
-            if n.get("label") and re.fullmatch(r"[\u0660-\u0669٠-٩\d\s]+", n["label"].strip())
+            1
+            for n in flat
+            if n.get("label")
+            and re.fullmatch(r"[\u0660-\u0669٠-٩\d\s]+", n["label"].strip())
         )
-        return bare >= len(flat) * 0.8   # 80 %+ bare → treat as bare
+        return bare >= len(flat) * 0.8  # 80 %+ bare → treat as bare
 
     if _toc_looks_bare(toc_tree):
         # Home page yielded nothing useful (absent or volume-selector only).
@@ -648,7 +670,7 @@ def fetch_book_meta(session: requests.Session, book_id: int) -> dict:
             soup3 = BeautifulSoup(r3.text, "lxml")
             vol_data = _extract_volumes(soup3)
         except Exception:
-            pass   # no volume info available; single PDF as before
+            pass  # no volume info available; single PDF as before
     if vol_data is not None:
         meta["volume_start_pages"], meta["volume_labels"] = vol_data
 
@@ -725,7 +747,10 @@ def fetch_author_info(session: requests.Session, author_id: int) -> dict:
 # CATEGORY LISTING
 # ═══════════════════════════════════════════════════════════════════════════
 
-def fetch_category_books(session: requests.Session, category_id: int, delay: float = 0.5) -> dict:
+
+def fetch_category_books(
+    session: requests.Session, category_id: int, delay: float = 0.5
+) -> dict:
     """
     Fetch every book listed under a shamela.ws category page.
     Paginates defensively: keeps requesting ?page=N+1 while it keeps finding
@@ -772,7 +797,11 @@ def fetch_category_books(session: requests.Session, category_id: int, delay: flo
 
             book = {"book_id": book_id}
             title_span = item.find("span", class_="book_title")
-            book["title"] = title_span.get_text(strip=True) if title_span else book_a.get_text(strip=True)
+            book["title"] = (
+                title_span.get_text(strip=True)
+                if title_span
+                else book_a.get_text(strip=True)
+            )
 
             author_a = item.find("a", href=re.compile(r"/author/\d+"))
             if author_a:
@@ -804,14 +833,20 @@ def fetch_category_books(session: requests.Session, category_id: int, delay: flo
 # PAGE PARSING  (unchanged logic from original scraper)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def _clean_inline(p_soup) -> str:
     """
     Return inner HTML of a <p> keeping only safe inline tags:
     span.cX (colored text) and <br>.
     Everything else is unwrapped to plain text.
     """
-    COLORS = {"c1": "#5f0000", "c2": "#005300", "c3": "#686800",
-              "c4": "#707070", "c5": "#005c81"}
+    COLORS = {
+        "c1": "#5f0000",
+        "c2": "#005300",
+        "c3": "#686800",
+        "c4": "#707070",
+        "c5": "#005c81",
+    }
 
     out = []
     for node in p_soup.children:
@@ -824,8 +859,10 @@ def _clean_inline(p_soup) -> str:
             color_class = next((c for c in classes if c in COLORS), None)
             if color_class:
                 inner = node.get_text(" ", strip=False)
-                out.append(f'<span style="color:{COLORS[color_class]}">'
-                           f'{_html_esc(inner)}</span>')
+                out.append(
+                    f'<span style="color:{COLORS[color_class]}">'
+                    f"{_html_esc(inner)}</span>"
+                )
             else:
                 out.append(_html_esc(node.get_text(" ", strip=False)))
         else:
@@ -835,6 +872,7 @@ def _clean_inline(p_soup) -> str:
 
 def _html_esc(t: str) -> str:
     import html as _h
+
     return _h.escape(t)
 
 
@@ -859,8 +897,8 @@ def parse_page_html(html: str) -> list[dict]:
 
         for p in div.find_all("p"):
             classes = p.get("class", [])
-            is_hamesh  = "hamesh"   in classes or "footnote" in classes
-            is_heading = "b"        in classes or "head"     in classes or "title" in classes
+            is_hamesh = "hamesh" in classes or "footnote" in classes
+            is_heading = "b" in classes or "head" in classes or "title" in classes
             inner_html = _clean_inline(p)
 
             if not inner_html.strip():
@@ -868,11 +906,15 @@ def parse_page_html(html: str) -> list[dict]:
 
             # Skip paragraphs that only contain "..." (ellipsis placeholders)
             plain = _strip_tags(inner_html).strip()
-            if re.fullmatch(r'\.+', plain):
+            if re.fullmatch(r"\.+", plain):
                 continue
 
             if is_hamesh:
-                lines = [frag.strip() for frag in re.split(r"<br\s*/?>", inner_html) if frag.strip()]
+                lines = [
+                    frag.strip()
+                    for frag in re.split(r"<br\s*/?>", inner_html)
+                    if frag.strip()
+                ]
                 if lines:
                     paragraphs.append({"type": "hamesh", "lines": lines})
             elif is_heading:
@@ -881,16 +923,18 @@ def parse_page_html(html: str) -> list[dict]:
                 paragraphs.append({"type": "text", "lines": [inner_html]})
 
         if paragraphs:
-            results.append({
-                "page_id": int(pid) if pid else None,
-                "page_num": int(pnum) if pnum else None,
-                "paragraphs": paragraphs,
-                # flat plain text for RAG / backward compat
-                "text": "\n\n".join(
-                    "\n".join(_strip_tags(l) for l in p["lines"])
-                    for p in paragraphs
-                ),
-            })
+            results.append(
+                {
+                    "page_id": int(pid) if pid else None,
+                    "page_num": int(pnum) if pnum else None,
+                    "paragraphs": paragraphs,
+                    # flat plain text for RAG / backward compat
+                    "text": "\n\n".join(
+                        "\n".join(_strip_tags(l) for l in p["lines"])
+                        for p in paragraphs
+                    ),
+                }
+            )
 
     # fallback
     if not results:
@@ -899,11 +943,14 @@ def parse_page_html(html: str) -> list[dict]:
             for div in nass.find_all("div", recursive=False):
                 t = div.get_text(" ", strip=True)
                 if len(t) > 20:
-                    results.append({
-                        "page_id": None, "page_num": None,
-                        "paragraphs": [{"type": "text", "lines": [_html_esc(t)]}],
-                        "text": t,
-                    })
+                    results.append(
+                        {
+                            "page_id": None,
+                            "page_num": None,
+                            "paragraphs": [{"type": "text", "lines": [_html_esc(t)]}],
+                            "text": t,
+                        }
+                    )
 
     return results
 
@@ -949,6 +996,7 @@ def _find_last_page_id(session: requests.Session, book_id: int) -> int | None:
 # RESUMABLE PAGE SCRAPING
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def load_pages_jsonl(pages_path: Path) -> list[dict]:
     """Load all pages into a list (used for JSON export only — not for PDF)."""
     pages = []
@@ -971,7 +1019,9 @@ def iter_pages_jsonl(pages_path: Path):
                     yield json.loads(line)
 
 
-def _merge_intro_volumes(vol_start_pages: list[int], vol_labels: list[str]) -> tuple[list[int], list[str]]:
+def _merge_intro_volumes(
+    vol_start_pages: list[int], vol_labels: list[str]
+) -> tuple[list[int], list[str]]:
     """Merge consecutive intro+content volume pairs into single volumes.
 
     An "intro" volume has a non-numeric label (e.g. 'م 1') and the following
@@ -1008,7 +1058,9 @@ def _pages_by_volume(pages_iter, vol_start_pages: list[int], vol_idx: int):
     stops early once it passes the volume's end.
     """
     lo = vol_start_pages[vol_idx]
-    hi = vol_start_pages[vol_idx + 1] - 1 if vol_idx + 1 < len(vol_start_pages) else None
+    hi = (
+        vol_start_pages[vol_idx + 1] - 1 if vol_idx + 1 < len(vol_start_pages) else None
+    )
     for page in pages_iter:
         pid = page.get("url_page_id") or page.get("page_id")
         if pid is None:
@@ -1028,8 +1080,9 @@ def _find_volume_index(pid: int, vol_start_pages: list[int]) -> int:
     return len(vol_start_pages) - 1
 
 
-def _prefix_headings_by_juz(pages_iter, vol_start_pages: list[int],
-                            include_juz_prefix: bool = True):
+def _prefix_headings_by_juz(
+    pages_iter, vol_start_pages: list[int], include_juz_prefix: bool = True
+):
     """Prepend 1-based volume number to heading numbers, resetting
     all levels of numbering within each volume.
 
@@ -1110,15 +1163,18 @@ def _prefix_headings_by_juz(pages_iter, vol_start_pages: list[int],
         for ue in page.get("unanchored_toc_entries", []):
             if ue.get("number"):
                 for h in page.get("resolved_headings", []):
-                    if (h.get("implicit")
-                            and h["text"] == ue["label"]
-                            and h["level"] == ue["level"]):
+                    if (
+                        h.get("implicit")
+                        and h["text"] == ue["label"]
+                        and h["level"] == ue["level"]
+                    ):
                         ue["number"] = h["number"]
                         break
 
         # Rebuild toc_number from the (possibly capped) heading numbers
         nums = [
-            h["number"] for h in page.get("resolved_headings", [])
+            h["number"]
+            for h in page.get("resolved_headings", [])
             if h.get("number") and not h.get("auto")
         ]
         if nums:
@@ -1181,9 +1237,9 @@ def _fetch_one(args_tuple) -> tuple[int, str | None, str | None]:
             return page_id, None, "403 Forbidden — try --cf_clearance"
         resp.raise_for_status()
         data = resp.json()
-        pid  = data.get("pageId", page_id)
+        pid = data.get("pageId", page_id)
         pnum = data.get("pageNum", "")
-        nid  = (data.get("nextId") or "").strip()
+        nid = (data.get("nextId") or "").strip()
         nass = data.get("nass", "")
         html = f'<div data-page-id="{pid}" data-page-num="{pnum}" data-next-id="{nid}">{nass}</div>'
         return page_id, html, None
@@ -1246,11 +1302,12 @@ def _chain_walk(
     if stop_id is not None:
         max_fetches = max(50, (stop_id - start_id) * 3)
 
-    from concurrent.futures import wait as _cf_wait, FIRST_COMPLETED
+    from concurrent.futures import FIRST_COMPLETED
+    from concurrent.futures import wait as _cf_wait
 
     executor = ThreadPoolExecutor(max_workers=workers)
-    futures: dict = {}                # Future → page_id
-    completed: dict[int, str] = {}    # page_id → html (fetched, tip not there yet)
+    futures: dict = {}  # Future → page_id
+    completed: dict[int, str] = {}  # page_id → html (fetched, tip not there yet)
     max_submitted: int | None = None
     n_fetched = 0
     stagger = delay / max(workers, 1)
@@ -1335,8 +1392,11 @@ def _chain_walk(
                     break
 
             if progress:
-                print(f"\r  {label} discovered {len(ids_in_order)} page IDs …",
-                      end="", flush=True)
+                print(
+                    f"\r  {label} discovered {len(ids_in_order)} page IDs …",
+                    end="",
+                    flush=True,
+                )
 
     finally:
         executor.shutdown(wait=False, cancel_futures=True)
@@ -1381,7 +1441,7 @@ def _discover_page_ids(
 
     # ── Method 1: derive from TOC ──────────────────────────────────────
     toc_flat = meta.get("toc_flat", [])
-    toc_ids  = sorted({e["page_id"] for e in toc_flat if e.get("page_id")})
+    toc_ids = sorted({e["page_id"] for e in toc_flat if e.get("page_id")})
     if len(toc_ids) >= 2:
         filled: list[int] = []
         extra_cache: dict[int, str] = {}
@@ -1425,8 +1485,14 @@ def _discover_page_ids(
                 # to stop at `nxt`) instead of giving up on TOC-derivation
                 # for the entire rest of the book.
                 seg_ids, seg_cache = _chain_walk(
-                    session, book_id, tid, workers, delay,
-                    progress=False, label="[ids:gap]", stop_id=nxt,
+                    session,
+                    book_id,
+                    tid,
+                    workers,
+                    delay,
+                    progress=False,
+                    label="[ids:gap]",
+                    stop_id=nxt,
                 )
                 walked_segments += 1
                 walked_pages += len(seg_ids)
@@ -1436,8 +1502,10 @@ def _discover_page_ids(
                         filled.append(val)
 
         if walked_segments and progress:
-            print(f"  [ids] {walked_segments} irregular TOC gap(s) chain-walked "
-                  f"({walked_pages} pages) — rest derived directly from TOC")
+            print(
+                f"  [ids] {walked_segments} irregular TOC gap(s) chain-walked "
+                f"({walked_pages} pages) — rest derived directly from TOC"
+            )
 
         # The gap-fill above only covers *between* TOC entries — trailing
         # pages after the last TOC anchor still need to be discovered.
@@ -1447,7 +1515,9 @@ def _discover_page_ids(
         book_last_id = _find_last_page_id(session, book_id)
         new_tail: list[int] = []
         if book_last_id is not None and book_last_id > toc_ids[-1]:
-            new_tail = [x for x in range(toc_ids[-1] + 1, book_last_id + 1) if x >= start_page]
+            new_tail = [
+                x for x in range(toc_ids[-1] + 1, book_last_id + 1) if x >= start_page
+            ]
         elif book_last_id is not None:
             pass  # last page is before or at last TOC entry — nothing to add
         else:
@@ -1456,14 +1526,22 @@ def _discover_page_ids(
             # so scraping can still proceed (the fetch phase will stop when
             # pages run out).  This case is rare.
             if progress:
-                print("  [ids] warning: could not determine last page, "
-                      "using estimated tail of 100 pages")
-            new_tail = [x for x in range(toc_ids[-1] + 1, toc_ids[-1] + 101) if x >= start_page]
-        
+                print(
+                    "  [ids] warning: could not determine last page, "
+                    "using estimated tail of 100 pages"
+                )
+            new_tail = [
+                x for x in range(toc_ids[-1] + 1, toc_ids[-1] + 101) if x >= start_page
+            ]
+
         filled.extend(new_tail)
         if filled:
             if progress:
-                extra = f", +{len(new_tail)} trailing pages past last TOC entry" if new_tail else ""
+                extra = (
+                    f", +{len(new_tail)} trailing pages past last TOC entry"
+                    if new_tail
+                    else ""
+                )
                 print(f"  [ids] derived {len(filled)} page IDs from TOC{extra}")
             return filled, extra_cache
 
@@ -1501,22 +1579,27 @@ def scrape_book_pages_resumable(
     Memory: only `workers × avg_page_size` bytes in flight at any moment.
     """
     progress_path = book_dir / "progress.json"
-    pages_path    = book_dir / "pages.jsonl"
+    pages_path = book_dir / "pages.jsonl"
 
     prog = load_json(progress_path, None)
     if prog and prog.get("status") == "done" and not force:
         if progress:
-            print(f"  [skip] book {book_id}: already fully scraped "
-                  f"({prog.get('pages_scraped', 0)} pages)")
+            print(
+                f"  [skip] book {book_id}: already fully scraped "
+                f"({prog.get('pages_scraped', 0)} pages)"
+            )
         return prog
 
     already_scraped = 0
-    resume_from_id  = start_page
+    resume_from_id = start_page
 
     if not prog or force:
         prog = {
-            "book_id": book_id, "status": "in_progress",
-            "next_page_id": start_page, "last_page_id": None, "pages_scraped": 0,
+            "book_id": book_id,
+            "status": "in_progress",
+            "next_page_id": start_page,
+            "last_page_id": None,
+            "pages_scraped": 0,
         }
         pages_path.write_text("", encoding="utf-8")
         atomic_write_json(progress_path, prog)
@@ -1537,12 +1620,16 @@ def scrape_book_pages_resumable(
             healed = True
 
         if progress and healed:
-            print(f"  [heal] progress.json was behind pages.jsonl on disk — "
-                  f"correcting resume point to page_id={resume_from_id} "
-                  f"({already_scraped} pages on disk)")
+            print(
+                f"  [heal] progress.json was behind pages.jsonl on disk — "
+                f"correcting resume point to page_id={resume_from_id} "
+                f"({already_scraped} pages on disk)"
+            )
         if progress:
-            print(f"  [resume] from page_id={resume_from_id} "
-                  f"({already_scraped} pages already saved)")
+            print(
+                f"  [resume] from page_id={resume_from_id} "
+                f"({already_scraped} pages already saved)"
+            )
 
     # ── Phase 1: enumerate IDs ─────────────────────────────────────────
     meta = meta or {}
@@ -1557,7 +1644,7 @@ def scrape_book_pages_resumable(
 
     if not page_ids:
         prog["status"] = "error"
-        prog["error"]  = "Could not discover any page IDs"
+        prog["error"] = "Could not discover any page IDs"
         atomic_write_json(progress_path, prog)
         return prog
 
@@ -1584,11 +1671,11 @@ def scrape_book_pages_resumable(
     stagger = delay / max(workers, 1)
     checkpoint_every = max(workers * 4, 50)
 
-    results_buf: dict[int, list[dict]] = {}   # page_id → parsed page data
+    results_buf: dict[int, list[dict]] = {}  # page_id → parsed page data
     count = already_scraped
     error_seen: str | None = None
 
-    write_cursor = 0   # index into page_ids of next page to write
+    write_cursor = 0  # index into page_ids of next page to write
 
     with open(pages_path, "a", encoding="utf-8") as pf:
         # NOTE: deliberately not using "with ThreadPoolExecutor(...) as pool:".
@@ -1614,8 +1701,7 @@ def scrape_book_pages_resumable(
                     f = pool.submit(lambda h=html, p=pid: (p, h, None))
                 else:
                     s = (i % workers) * stagger if i < workers else 0
-                    f = pool.submit(_fetch_one,
-                                    (session, book_id, pid, s))
+                    f = pool.submit(_fetch_one, (session, book_id, pid, s))
                 future_to_pid[f] = pid
 
             # Collect results as they complete (any order), store in buffer
@@ -1630,7 +1716,7 @@ def scrape_book_pages_resumable(
                         print(f"\n  [!] Error on page {pid_result}: {err}")
                     # Don't abort — collect what we have; errors recorded below
                     completed_set.add(pid_result)
-                    results_buf[pid_result] = []   # empty = skipped
+                    results_buf[pid_result] = []  # empty = skipped
                     continue
 
                 page_data = parse_page_html(html)
@@ -1660,24 +1746,31 @@ def scrape_book_pages_resumable(
                 if flushed_any:
                     pf.flush()
                     last_written = page_ids[write_cursor - 1]
-                    next_pending = page_ids[write_cursor] if write_cursor < len(page_ids) else None
-                    prog["last_page_id"]  = last_written
-                    prog["next_page_id"]  = next_pending
+                    next_pending = (
+                        page_ids[write_cursor] if write_cursor < len(page_ids) else None
+                    )
+                    prog["last_page_id"] = last_written
+                    prog["next_page_id"] = next_pending
                     prog["pages_scraped"] = count
-                    prog["status"]        = "in_progress"
+                    prog["status"] = "in_progress"
                     # Checkpoint periodically (not every page — avoids I/O bottleneck)
                     if write_cursor % checkpoint_every == 0 or next_pending is None:
                         atomic_write_json(progress_path, prog)
 
                 if progress:
                     pct = int(100 * len(completed_set) / total)
-                    print(f"\r  fetched {len(completed_set)}/{total} ({pct}%)  "
-                          f"written {count - already_scraped}  ",
-                          end="", flush=True)
+                    print(
+                        f"\r  fetched {len(completed_set)}/{total} ({pct}%)  "
+                        f"written {count - already_scraped}  ",
+                        end="",
+                        flush=True,
+                    )
         except KeyboardInterrupt:
             if progress:
-                print("\n  [!] Interrupted — cancelling queued fetches "
-                      "(a few in-flight requests may still finish) …")
+                print(
+                    "\n  [!] Interrupted — cancelling queued fetches "
+                    "(a few in-flight requests may still finish) …"
+                )
             # cancel_futures=True drops every future that hasn't started yet
             # instead of waiting for the whole queue to drain. Only the
             # `workers` requests already in flight still need to finish (or
@@ -1696,11 +1789,11 @@ def scrape_book_pages_resumable(
 
     if error_seen and count == already_scraped:
         prog["status"] = "error"
-        prog["error"]  = error_seen
+        prog["error"] = error_seen
     elif write_cursor < len(page_ids):
         prog["status"] = "paused"
     else:
-        prog["status"]       = "done"
+        prog["status"] = "done"
         prog["next_page_id"] = None
 
     prog["pages_scraped"] = count
@@ -1719,13 +1812,13 @@ def _e(text: str) -> str:
     """HTML-escape a string."""
     return _html.escape(str(text)) if text else ""
 
+
 def _truncate(title: str, max_words: int = 5) -> str:
     """Truncate a title to max_words; if longer keeps first few + '...' + last word."""
     words = title.split()
     if len(words) <= max_words:
         return title
-    return ' '.join(words[:max_words - 1]) + ' … ' + words[-1]
-
+    return " ".join(words[: max_words - 1]) + " … " + words[-1]
 
 
 # NOTE: Visible TOC rendering has been removed per prompt_toc.txt requirements.
@@ -1758,17 +1851,16 @@ def _build_html_css(meta: dict) -> str:
     toc_bm_css = "\n    ".join(toc_bm_css_parts)
 
     # Islamic gold palette
-    GOLD       = "#b8860b"
-    GOLD_L     = "#daa520"
-    GOLD_D     = "#6b4f10"
-    TEAL       = "#1a3a4a"
-    RUST       = "#8b2e00"
-    INK        = "#1a1008"
-    CREAM      = "#fefcf7"
-    PARCHMENT  = "#fcf8ef"
-    SEPIA      = "#5c3d1a"
-    BROWN      = "#3e2712"
-
+    GOLD = "#b8860b"
+    GOLD_L = "#daa520"
+    GOLD_D = "#6b4f10"
+    TEAL = "#1a3a4a"
+    RUST = "#8b2e00"
+    INK = "#1a1008"
+    CREAM = "#fefcf7"
+    PARCHMENT = "#fcf8ef"
+    SEPIA = "#5c3d1a"
+    BROWN = "#3e2712"
 
     css = f"""
     /* ═══════════════════════════════════════════════════════
@@ -2202,12 +2294,14 @@ def _build_html_css(meta: dict) -> str:
 def _plain_text(html_frag: str) -> str:
     """Strip HTML tags and unescape HTML entities from a fragment for text comparison."""
     import html as _html_mod
-    stripped = re.sub(r'<[^>]+>', '', html_frag)
+
+    stripped = re.sub(r"<[^>]+>", "", html_frag)
     return _html_mod.unescape(stripped)
 
 
 _BRACKET_STRIP_CHARS = "-[]（）().「」【】《》〈〉"
-_TASHKEEL_RE = re.compile(r'[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]')
+_TASHKEEL_RE = re.compile(r"[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]")
+
 
 def _normalize_ar(s: str) -> str:
     """Normalize Arabic for comparing page text against a TOC label."""
@@ -2216,23 +2310,23 @@ def _normalize_ar(s: str) -> str:
     # alif maqsura → yaa, taa marbouta → haa, hamza-on-waw → waw,
     # hamza-on-ya → yaa.  This catches OCR / spelling mismatches
     # like متآخرو vs متأخرو or رأي vs رأى.
-    s = s.replace("\u0622", "\u0627")   # آ → ا
-    s = s.replace("\u0623", "\u0627")   # أ → ا
-    s = s.replace("\u0625", "\u0627")   # إ → ا
-    s = s.replace("\u0649", "\u064A")   # ى → ي
-    s = s.replace("\u0629", "\u0647")   # ة → ه
-    s = s.replace("\u0624", "\u0648")   # ؤ → و
-    s = s.replace("\u0626", "\u064A")   # ئ → ي
+    s = s.replace("\u0622", "\u0627")  # آ → ا
+    s = s.replace("\u0623", "\u0627")  # أ → ا
+    s = s.replace("\u0625", "\u0627")  # إ → ا
+    s = s.replace("\u0649", "\u064a")  # ى → ي
+    s = s.replace("\u0629", "\u0647")  # ة → ه
+    s = s.replace("\u0624", "\u0648")  # ؤ → و
+    s = s.replace("\u0626", "\u064a")  # ئ → ي
     s = _TASHKEEL_RE.sub("", s)
     # Replace Arabic punctuation with space so labels that differ only by
     # commas, dashes, etc. still match (e.g. TOC "طيب في نفسه صاحب خير" vs
     # body "طيب في نفسه، صاحب خير").
-    s = re.sub(r'[،؟!\.\,\;\:\-\(\)\[\]\{\}]', ' ', s)
+    s = re.sub(r"[،؟!\.\,\;\:\-\(\)\[\]\{\}]", " ", s)
     s = s.strip(_BRACKET_STRIP_CHARS + " :،ـ")
     s = re.sub(r"\s+", " ", s).strip()
     # Strip leading Arabic-Indic / Latin digits followed by a separator
     # so eg body "١- رأى أرسطوطاليس..." matches TOC "رأي أرسطوطاليس...".
-    s = re.sub(r'^[\u0660-\u06690-9]+[\s\-\.\)\]\}]*', '', s).strip()
+    s = re.sub(r"^[\u0660-\u06690-9]+[\s\-\.\)\]\}]*", "", s).strip()
     return s
 
 
@@ -2253,12 +2347,15 @@ def _extract_bracket_headings(paras: list[dict] | None) -> list[dict]:
         for li, line in enumerate(para.get("lines", [])):
             stripped = _bracket_stripped(line)
             if stripped:
-                found.append({
-                    "para_idx": pi, "line_idx": li,
-                    "ptype": para.get("type"), "text": stripped,
-                })
+                found.append(
+                    {
+                        "para_idx": pi,
+                        "line_idx": li,
+                        "ptype": para.get("type"),
+                        "text": stripped,
+                    }
+                )
     return found
-
 
 
 def _has_extra_content(line_html: str, norm_label: str) -> bool:
@@ -2275,16 +2372,17 @@ def _has_extra_content(line_html: str, norm_label: str) -> bool:
     plain = _plain_text(line_html).strip()
     # Align with _normalize_ar: replace punctuation (except parentheses,
     # which would break footnote detection like (١)) with spaces.
-    plain = re.sub(r'[،؟!\.\,\;\:\-]', ' ', plain)
+    plain = re.sub(r"[،؟!\.\,\;\:\-]", " ", plain)
     plain = re.sub(r"\s+", " ", plain).strip()
     plain_stripped = plain.strip(_BRACKET_STRIP_CHARS + " :،ـ")
     plain_no_tashkeel = _TASHKEEL_RE.sub("", plain_stripped).strip()
-    norm_label_plain  = _TASHKEEL_RE.sub("", norm_label).strip()
+    norm_label_plain = _TASHKEEL_RE.sub("", norm_label).strip()
     return len(plain_no_tashkeel) > len(norm_label_plain) + 3
 
 
-def _find_label_in_lines(norm_label: str, flat_lines: list[tuple[int, int, str]],
-                         cursor: int) -> tuple[tuple[int, int] | None, bool]:
+def _find_label_in_lines(
+    norm_label: str, flat_lines: list[tuple[int, int, str]], cursor: int
+) -> tuple[tuple[int, int] | None, bool]:
     """
     Find where a TOC label appears in page text.
     Returns (start, end) line span and keep_line (True when the matched line
@@ -2303,8 +2401,11 @@ def _find_label_in_lines(norm_label: str, flat_lines: list[tuple[int, int, str]]
             joined = " ".join(flat_lines[i][2] for i in range(start, end))
             if joined == norm_label:
                 return (start, end), False
-            if (span_len == 1 and len(norm_label) >= 4
-                    and flat_lines[start][2].startswith(norm_label)):
+            if (
+                span_len == 1
+                and len(norm_label) >= 4
+                and flat_lines[start][2].startswith(norm_label)
+            ):
                 return (start, start + 1), flat_lines[start][2] != norm_label
 
     # Fallback: label appears at the start of a line followed by a
@@ -2314,17 +2415,20 @@ def _find_label_in_lines(norm_label: str, flat_lines: list[tuple[int, int, str]]
     # "٦٧" (the next char "٧" is alphanumeric → skipped).
     for start in range(cursor, len(flat_lines)):
         line_norm = flat_lines[start][2]
-        if (line_norm.startswith(norm_label)
-                and len(line_norm) > len(norm_label)
-                and not line_norm[len(norm_label)].isalnum()):
+        if (
+            line_norm.startswith(norm_label)
+            and len(line_norm) > len(norm_label)
+            and not line_norm[len(norm_label)].isalnum()
+        ):
             return (start, start + 1), True
 
     return None, False
 
 
-def _locate_toc_headings_in_page(paras: list[dict] | None,
-                                  toc_pool: list[tuple[str, int, str, str | None, str | None]]
-                                  ) -> list[dict]:
+def _locate_toc_headings_in_page(
+    paras: list[dict] | None,
+    toc_pool: list[tuple[str, int, str, str | None, str | None]],
+) -> list[dict]:
     """
     Anchor TOC entries to inline body lines when the label appears in the
     text (``اسمُه:`` vs TOC ``اسمه``).  Unmatched entries and partial
@@ -2346,9 +2450,15 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
         if para.get("type") == "hamesh":
             continue
         for li, line in enumerate(para.get("lines", [])):
-            if _bracket_stripped(line) is not None:
-                continue
-            norm = _normalize_ar(line)
+            stripped = _bracket_stripped(line)
+            if stripped is not None:
+                # Include bracket headings using their stripped text so that
+                # TOC entries (e.g. "والعصر") can match the inline bracket
+                # [والعصر] at its real position rather than falling through
+                # to an implicit page-top heading placed before prior content.
+                norm = _normalize_ar(stripped)
+            else:
+                norm = _normalize_ar(line)
             if norm:
                 flat_lines.append((pi, li, norm))
 
@@ -2368,13 +2478,21 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
         """Flush pending entries to page-top (truly unmatched, end-of-pool)."""
         nonlocal pending
         for label, level, number, parent_text, parent_number in pending:
-            _append_top({
-                "text": label, "level": level, "number": number,
-                "matched": False, "auto": False, "implicit": True,
-                "keep_line": False, "suppress": [],
-                "toc_parent_text": parent_text,
-                "_uid": number, "toc_parent_uid": parent_number,
-            })
+            _append_top(
+                {
+                    "text": label,
+                    "level": level,
+                    "number": number,
+                    "matched": False,
+                    "auto": False,
+                    "implicit": True,
+                    "keep_line": False,
+                    "suppress": [],
+                    "toc_parent_text": parent_text,
+                    "_uid": number,
+                    "toc_parent_uid": parent_number,
+                }
+            )
         pending = []
 
     def _flush_pending_before_child(child_positions: list[tuple[int, int]]):
@@ -2395,28 +2513,50 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
         child_pi, child_li = child_positions[0]
         # If the child is at the page top (no body lines consumed before it),
         # treat parents as top-slot entries too — they'll render before the child.
-        if cursor == 0 and child_pi == flat_lines[0][0] and child_li == flat_lines[0][1]:
+        if (
+            cursor == 0
+            and child_pi == flat_lines[0][0]
+            and child_li == flat_lines[0][1]
+        ):
             for label, level, number, parent_text, parent_number in pending:
-                _append_top({
-                    "text": label, "level": level, "number": number,
-                    "matched": False, "auto": False, "implicit": True,
-                    "keep_line": False, "suppress": [],
-                    "toc_parent_text": parent_text,
-                    "_uid": number, "toc_parent_uid": parent_number,
-                })
+                _append_top(
+                    {
+                        "text": label,
+                        "level": level,
+                        "number": number,
+                        "matched": False,
+                        "auto": False,
+                        "implicit": True,
+                        "keep_line": False,
+                        "suppress": [],
+                        "toc_parent_text": parent_text,
+                        "_uid": number,
+                        "toc_parent_uid": parent_number,
+                    }
+                )
         else:
-            for idx, (label, level, number, parent_text, parent_number) in enumerate(pending):
-                resolved.append({
-                    "positions": [(child_pi, child_li)],
-                    "text": label, "level": level, "number": number,
-                    "matched": False, "auto": False, "implicit": True,
-                    "keep_line": False, "suppress": [],
-                    "at_page_top": False,
-                    "before_child": True,
-                    "_before_child_slot": idx,
-                    "toc_parent_text": parent_text,
-                    "_uid": number, "toc_parent_uid": parent_number,
-                })
+            for idx, (label, level, number, parent_text, parent_number) in enumerate(
+                pending
+            ):
+                resolved.append(
+                    {
+                        "positions": [(child_pi, child_li)],
+                        "text": label,
+                        "level": level,
+                        "number": number,
+                        "matched": False,
+                        "auto": False,
+                        "implicit": True,
+                        "keep_line": False,
+                        "suppress": [],
+                        "at_page_top": False,
+                        "before_child": True,
+                        "_before_child_slot": idx,
+                        "toc_parent_text": parent_text,
+                        "_uid": number,
+                        "toc_parent_uid": parent_number,
+                    }
+                )
         pending = []
 
     for label, level, number, parent_text, parent_number in toc_pool:
@@ -2428,10 +2568,12 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
             # (e.g. ملخص البحث before المقدمة in book 909).
             found_span, keep_line = _find_label_in_lines(norm_label, flat_lines, 0)
             if found_span and found_span[0] >= cursor:
-                found_span = None   # only accept matches before cursor
+                found_span = None  # only accept matches before cursor
         if found_span:
             start, end = found_span
-            positions = [(flat_lines[i][0], flat_lines[i][1]) for i in range(start, end)]
+            positions = [
+                (flat_lines[i][0], flat_lines[i][1]) for i in range(start, end)
+            ]
 
             # Post-check: determine keep_line based on actual extra content.
             # The _find_label_in_lines return value can be wrong when
@@ -2439,7 +2581,11 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
             # the only real extra content is trivial (e.g. a period).
             if end - start == 1:
                 pi, li = positions[0]
-                raw_line = (paras[pi].get("lines") or [])[li] if paras and pi < len(paras) else ""
+                raw_line = (
+                    (paras[pi].get("lines") or [])[li]
+                    if paras and pi < len(paras)
+                    else ""
+                )
                 if raw_line:
                     keep_line = _has_extra_content(raw_line, norm_label)
             # Only hoist to page-top when the heading is literally the first
@@ -2450,25 +2596,42 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
             # section's content in the PDF.
             if start == 0 and cursor == 0:
                 _flush_pending_as_top()
-                _append_top({
-                    "text": label, "level": level, "number": number,
-                    "matched": True, "auto": False, "implicit": False,
-                    "keep_line": keep_line, "suppress": [],
-                    "toc_parent_text": parent_text,
-                    "_uid": number, "toc_parent_uid": parent_number,
-                })
+                _append_top(
+                    {
+                        "text": label,
+                        "level": level,
+                        "number": number,
+                        "matched": True,
+                        "auto": False,
+                        "implicit": False,
+                        "keep_line": keep_line,
+                        "suppress": [],
+                        "toc_parent_text": parent_text,
+                        "_uid": number,
+                        "toc_parent_uid": parent_number,
+                    }
+                )
             else:
                 # Heading found mid-page (after prior body text or a prior
                 # heading).  Keep inline so content flows between sections.
                 _flush_pending_before_child(positions)
-                resolved.append({
-                    "positions": positions, "text": label, "level": level,
-                    "number": number, "matched": True, "auto": False,
-                    "implicit": False, "keep_line": keep_line,
-                    "suppress": [], "at_page_top": False,
-                    "toc_parent_text": parent_text,
-                    "_uid": number, "toc_parent_uid": parent_number,
-                })
+                resolved.append(
+                    {
+                        "positions": positions,
+                        "text": label,
+                        "level": level,
+                        "number": number,
+                        "matched": True,
+                        "auto": False,
+                        "implicit": False,
+                        "keep_line": keep_line,
+                        "suppress": [],
+                        "at_page_top": False,
+                        "toc_parent_text": parent_text,
+                        "_uid": number,
+                        "toc_parent_uid": parent_number,
+                    }
+                )
             cursor = end
         else:
             pending.append((label, level, number, parent_text, parent_number))
@@ -2488,8 +2651,11 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
         promoted = []
         remaining = []
         for h in resolved:
-            if (not h.get("at_page_top") and not h.get("before_child")
-                    and h["positions"][0] == (first_pi, first_li)):
+            if (
+                not h.get("at_page_top")
+                and not h.get("before_child")
+                and h["positions"][0] == (first_pi, first_li)
+            ):
                 promoted.append(h)
             else:
                 remaining.append(h)
@@ -2538,12 +2704,14 @@ def resolve_book_headings(meta: dict, pages_iter):
                     parent["page_id"] = pid
                 else:
                     break
-        toc_parent_map[entry["label"]] = toc_flat[_stack[-1][1]].get("label") if _stack else None
+        toc_parent_map[entry["label"]] = (
+            toc_flat[_stack[-1][1]].get("label") if _stack else None
+        )
         _stack.append((lvl, i))
 
     sorted_toc = sorted(
         [e for e in toc_flat if e.get("page_id") is not None],
-        key=lambda e: e["page_id"]
+        key=lambda e: e["page_id"],
     )
     toc_idx = 0
     breadcrumb_stack: list[tuple[str, str, int]] = []
@@ -2571,9 +2739,13 @@ def resolve_book_headings(meta: dict, pages_iter):
                 if label:
                     label = label.strip()
                     parent_text = toc_parent_map.get(label)
-                    parent_number = breadcrumb_stack[-1][0] if breadcrumb_stack else None
+                    parent_number = (
+                        breadcrumb_stack[-1][0] if breadcrumb_stack else None
+                    )
                     breadcrumb_stack.append((number, label, level))
-                    page_toc_new.append((label, level, number, parent_text, parent_number))
+                    page_toc_new.append(
+                        (label, level, number, parent_text, parent_number)
+                    )
                 toc_idx += 1
 
         if page_toc_new:
@@ -2648,7 +2820,8 @@ def resolve_book_headings(meta: dict, pages_iter):
         existing_child_count = 0
         if deepest_number != "0":
             existing_child_count = sum(
-                1 for _, _, num, _, _ in page_toc_new
+                1
+                for _, _, num, _, _ in page_toc_new
                 if num.startswith(f"{deepest_number}.")
                 and num.count(".") == deepest_number.count(".") + 1
             )
@@ -2671,7 +2844,9 @@ def resolve_book_headings(meta: dict, pages_iter):
                 # paragraph alongside the numbered heading.
                 consumed_positions.add(pos)
                 for h in resolved:
-                    if not h.get("auto") and _normalize_ar(h["text"]) == _normalize_ar(bh["text"]):
+                    if not h.get("auto") and _normalize_ar(h["text"]) == _normalize_ar(
+                        bh["text"]
+                    ):
                         if pos not in {tuple(p) for p in h.get("suppress", [])}:
                             h.setdefault("suppress", []).append(list(pos))
                         break
@@ -2682,11 +2857,17 @@ def resolve_book_headings(meta: dict, pages_iter):
                 auto_number = str(auto_n)
             else:
                 auto_number = f"{deepest_number}.{existing_child_count + auto_n}"
-            resolved.append({
-                **bh, "positions": [pos], "level": auto_level,
-                "number": auto_number, "matched": False, "auto": True,
-                "implicit": False,
-            })
+            resolved.append(
+                {
+                    **bh,
+                    "positions": [pos],
+                    "level": auto_level,
+                    "number": auto_number,
+                    "matched": False,
+                    "auto": True,
+                    "implicit": False,
+                }
+            )
 
         # Mark headings whose first position coincides with a bracket heading
         # as "bracket_matched" — these are real content headings, not just
@@ -2708,10 +2889,12 @@ def resolve_book_headings(meta: dict, pages_iter):
             if not parent_uid:
                 continue
             for j, ph in enumerate(resolved):
-                if (ph.get("_uid") == parent_uid
-                        and not ph.get("bracket_matched")
-                        and not ph.get("auto")
-                        and not ph.get("implicit")):
+                if (
+                    ph.get("_uid") == parent_uid
+                    and not ph.get("bracket_matched")
+                    and not ph.get("auto")
+                    and not ph.get("implicit")
+                ):
                     if i < j:
                         # Child before parent → promote both to page-top,
                         # parent before child
@@ -2724,13 +2907,16 @@ def resolve_book_headings(meta: dict, pages_iter):
         page["echo_suppressed_positions"] = echo_suppressed  # render path uses this
         page["unanchored_toc_entries"] = [
             {"label": h["text"], "level": h["level"], "number": h["number"]}
-            for h in resolved if h.get("implicit")
+            for h in resolved
+            if h.get("implicit")
         ]
 
         yield page
 
 
-def materialize_resolved_pages(meta: dict, pages_path: Path, resolved_path: Path) -> int:
+def materialize_resolved_pages(
+    meta: dict, pages_path: Path, resolved_path: Path
+) -> int:
     count = 0
     with open(resolved_path, "w", encoding="utf-8") as out_fh:
         for page in resolve_book_headings(meta, iter_pages_jsonl(pages_path)):
@@ -2853,8 +3039,7 @@ def _renumber_headings_by_document_order(resolved_path: Path) -> None:
             # correct page index.
             imp_page = pages[imp_page_idx]
             imp_page["resolved_headings"] = [
-                h for h in imp_page["resolved_headings"]
-                if h is not imp_h
+                h for h in imp_page["resolved_headings"] if h is not imp_h
             ]
             auto_page = pages[auto_page_idx]
             auto_page["resolved_headings"].append(imp_h)
@@ -2877,8 +3062,7 @@ def _renumber_headings_by_document_order(resolved_path: Path) -> None:
             # Remove the auto heading from its page
             auto_page = pages[auto_page_idx]
             auto_page["resolved_headings"] = [
-                h for h in auto_page["resolved_headings"]
-                if h is not auto_h
+                h for h in auto_page["resolved_headings"] if h is not auto_h
             ]
 
     flat: list[tuple[int, int, int, int, dict]] = []
@@ -2976,8 +3160,9 @@ def _renumber_headings_by_document_order(resolved_path: Path) -> None:
             stack.pop()
 
         # Determine effective level and optionally load parent counters.
-        parent_in_stack = bool(heading_parent_uid and stack
-                               and stack[-1][1] == heading_parent_uid)
+        parent_in_stack = bool(
+            heading_parent_uid and stack and stack[-1][1] == heading_parent_uid
+        )
         if parent_in_stack:
             eff_level = stack[-1][0] + 1
         elif heading_parent_uid:
@@ -2998,8 +3183,7 @@ def _renumber_headings_by_document_order(resolved_path: Path) -> None:
                         for i in range(len(parent_parts), len(counters)):
                             counters[i] = 0
                     parent_level = len(parent_parts) - 1
-                    stack = [(pl, lv) for pl, lv in stack
-                             if pl <= parent_level]
+                    stack = [(pl, lv) for pl, lv in stack if pl <= parent_level]
                     if not stack or stack[-1][0] < parent_level:
                         stack.append((parent_level, heading_parent_uid))
                     eff_level = stack[-1][0] + 1
@@ -3014,9 +3198,7 @@ def _renumber_headings_by_document_order(resolved_path: Path) -> None:
         for i in range(eff_level + 1, len(counters)):
             counters[i] = 0
 
-        heading["number"] = ".".join(
-            str(counters[i]) for i in range(eff_level + 1)
-        )
+        heading["number"] = ".".join(str(counters[i]) for i in range(eff_level + 1))
         stack.append((eff_level, heading_uid))
 
         # Save counter state for the current parent
@@ -3027,7 +3209,11 @@ def _renumber_headings_by_document_order(resolved_path: Path) -> None:
     for page in pages:
         for ue in page.get("unanchored_toc_entries", []):
             for h in page.get("resolved_headings", []):
-                if h.get("implicit") and h["text"] == ue["label"] and h["level"] == ue["level"]:
+                if (
+                    h.get("implicit")
+                    and h["text"] == ue["label"]
+                    and h["level"] == ue["level"]
+                ):
                     ue["number"] = h["number"]
                     break
 
@@ -3036,8 +3222,13 @@ def _renumber_headings_by_document_order(resolved_path: Path) -> None:
             f.write(_fast_json(page, indent=False) + "\n")
 
 
-def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
-                       vol_num_ref: list, max_toc_level: int = 3) -> tuple[str, int]:
+def _render_page_html(
+    page: dict,
+    toc_by_page: dict,
+    vol_boundaries: set,
+    vol_num_ref: list,
+    max_toc_level: int = 3,
+) -> tuple[str, int]:
     parts = []
     pid = page.get("page_id")
     vol_num = vol_num_ref[0]
@@ -3049,13 +3240,13 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
         parts.append(
             f'<div class="bm-setter" '
             f'style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;font-size:0;string-set:chapter-title content()">'
-            f'{_e(page_breadcrumb)}</div>\n'
+            f"{_e(page_breadcrumb)}</div>\n"
         )
     if page_toc_number:
         parts.append(
             f'<div class="bm-setter" '
             f'style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;font-size:0;string-set:toc-number content()">'
-            f'{_e(page_toc_number)}</div>\n'
+            f"{_e(page_toc_number)}</div>\n"
         )
 
     paras = page.get("paragraphs")
@@ -3083,10 +3274,12 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
 
     # Sort each position bucket: before_child parents first (by slot), then child
     for pos, hlist in heading_by_start.items():
-        hlist.sort(key=lambda h: (
-            0 if h.get("before_child") else 1,
-            h.get("_before_child_slot", 0),
-        ))
+        hlist.sort(
+            key=lambda h: (
+                0 if h.get("before_child") else 1,
+                h.get("_before_child_slot", 0),
+            )
+        )
 
     # ── Render every heading visibly with per-level color ──────
     # All matched headings render as visible styled headings.
@@ -3103,19 +3296,25 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
         if h.get("auto"):
             nh_class = "auto"
             label_text = _e(h["text"])
-            return (f'<p class="toc-numbered-heading toc-nh-{nh_class}">'
-                    f'{label_text}</p>\n')
-        label_text = f'{num}. {_e(h["text"])}' if num and level < 3 else _e(h["text"])
+            return (
+                f'<p class="toc-numbered-heading toc-nh-{nh_class}">{label_text}</p>\n'
+            )
+        label_text = f"{num}. {_e(h['text'])}" if num and level < 3 else _e(h["text"])
         nh_class = level
-        return (f'<p class="toc-numbered-heading toc-nh-{nh_class} toc-bm-{level}">'
-                f'{label_text}</p>\n')
+        return (
+            f'<p class="toc-numbered-heading toc-nh-{nh_class} toc-bm-{level}">'
+            f"{label_text}</p>\n"
+        )
 
     def _strip_body_color(body_line: str) -> str:
         """Strip leading Shamela teal span (c5 class or #005c81) from body line."""
         import re
+
         cleaned = re.sub(
             r'^<span[^>]*(?:class="?c5"?|color:#005c81)[^>]*>.*?</span>\s*',
-            '', body_line, count=1
+            "",
+            body_line,
+            count=1,
         ).strip()
         return cleaned
 
@@ -3124,7 +3323,7 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
         so the body doesn't repeat the number and first words."""
         ht = heading_text.strip()
         if body.startswith(ht):
-            remaining = body[len(ht):].strip().lstrip(' ,.-،:')
+            remaining = body[len(ht) :].strip().lstrip(" ,.-،:")
             return remaining
         # Try normalized comparison for minor differences (commas, shadda, etc.)
         nbody = _normalize_ar(body)
@@ -3137,7 +3336,7 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
             i = 0
             matched = 0
             while i < len(body) and matched < len(nht):
-                if nht[matched] == ' ':
+                if nht[matched] == " ":
                     matched += 1
                     continue
                 chunk = _normalize_ar(body[i])
@@ -3147,7 +3346,7 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
                     else:
                         return body
                 i += 1
-            remaining = body[i:].strip().lstrip(' ,.-،:')
+            remaining = body[i:].strip().lstrip(" ,.-،:")
             return remaining
         return body
 
@@ -3160,7 +3359,7 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
 
     def _close_if_open():
         if entry_open[0]:
-            parts.append('</div></div>')
+            parts.append("</div></div>")
             entry_open[0] = False
 
     has_body = paras or page.get("text")
@@ -3176,8 +3375,8 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
                 parts.append('<div class="hamesh">')
                 for line in para["lines"]:
                     if line.strip():
-                        parts.append(f'<p>{line.strip()}</p>')
-                parts.append('</div>')
+                        parts.append(f"<p>{line.strip()}</p>")
+                parts.append("</div>")
                 continue
 
             for li, line in enumerate(para["lines"]):
@@ -3188,8 +3387,11 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
                     for heading in headings_here:
                         parts.append(_heading_html(heading))
                     real_headings = [
-                        h for h in headings_here
-                        if not (h.get("implicit") or h.get("auto") or h.get("before_child"))
+                        h
+                        for h in headings_here
+                        if not (
+                            h.get("implicit") or h.get("auto") or h.get("before_child")
+                        )
                     ]
                     if real_headings:
                         if all(not h.get("keep_line", True) for h in real_headings):
@@ -3200,19 +3402,27 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
                                 # Strip the heading label prefix so the body
                                 # doesn't repeat the number and first words.
                                 for rh in real_headings:
-                                    stripped = _strip_heading_prefix(body_line, rh["text"])
+                                    stripped = _strip_heading_prefix(
+                                        body_line, rh["text"]
+                                    )
                                     if stripped and stripped != body_line:
                                         body_line = stripped
                                         break
                                 if body_line:
-                                    tag = 'p class="chapter-heading"' if ptype == "heading" else 'p'
-                                    parts.append(f'<{tag}>{body_line}</{tag.split()[0]}>')
+                                    tag = (
+                                        'p class="chapter-heading"'
+                                        if ptype == "heading"
+                                        else "p"
+                                    )
+                                    parts.append(
+                                        f"<{tag}>{body_line}</{tag.split()[0]}>"
+                                    )
                         continue
                     # All artificial headings → show body as-is
                     body_line = line.strip()
                     if body_line:
-                        tag = 'p class="chapter-heading"' if ptype == "heading" else 'p'
-                        parts.append(f'<{tag}>{body_line}</{tag.split()[0]}>')
+                        tag = 'p class="chapter-heading"' if ptype == "heading" else "p"
+                        parts.append(f"<{tag}>{body_line}</{tag.split()[0]}>")
                     continue
                 elif (pi, li) in suppressed_positions:
                     continue
@@ -3220,11 +3430,11 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
                 if ptype == "heading":
                     parts.append(f'<p class="chapter-heading">{body_line}</p>')
                 else:
-                    parts.append(f'<p>{body_line}</p>')
+                    parts.append(f"<p>{body_line}</p>")
     elif page.get("text"):
         for chunk in page["text"].split("\n\n"):
             if chunk.strip():
-                parts.append(f'<p>{_e(chunk.strip())}</p>')
+                parts.append(f"<p>{_e(chunk.strip())}</p>")
 
     _close_if_open()
     return "".join(parts), vol_num
@@ -3254,8 +3464,14 @@ def _ensure_resolved(meta: dict, pages_iter):
         yield page
 
 
-def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path,
-                       flush_every: int = 50, volume_label: str | None = None) -> None:
+def build_html_to_file(
+    meta: dict,
+    author_info: dict,
+    pages_iter,
+    out_path: Path,
+    flush_every: int = 50,
+    volume_label: str | None = None,
+) -> None:
     """
     Stream-write the full HTML document to *out_path* one page at a time.
     Memory usage is O(flush_every pages) instead of O(all pages).
@@ -3279,9 +3495,7 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
             max_toc_level = lvl
         pid = entry.get("page_id")
         if pid is not None:
-            toc_by_page.setdefault(pid, []).append(
-                (entry.get("label", ""), lvl)
-            )
+            toc_by_page.setdefault(pid, []).append((entry.get("label", ""), lvl))
 
     if volume_label is None:
         vol_starts_list = sorted(meta.get("volume_start_pages", []))
@@ -3291,23 +3505,29 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
         vol_starts_list = []
         vol_boundaries = set()
         vol_labels_list = []
-    vol_num = [1]   # mutable reference (1-indexed)
+    vol_num = [1]  # mutable reference (1-indexed)
 
     scraped_date = datetime.date.today().strftime("%Y-%m-%d")
 
-    with open(out_path, "w", encoding="utf-8", buffering=1 << 20) as fh:  # 1 MB write buffer
+    with open(
+        out_path, "w", encoding="utf-8", buffering=1 << 20
+    ) as fh:  # 1 MB write buffer
         # ── DOCTYPE + CSS ──────────────────────────────────────────────
         fh.write(
             f'<!DOCTYPE html><html lang="ar" dir="rtl"><head>'
             f'<meta charset="UTF-8">'
-            f'<style>{css}</style></head><body>\n'
+            f"<style>{css}</style></head><body>\n"
         )
 
         # Hidden span: sets book-title and chapter-title to book title (fallback)
         book_title = meta.get("title", "كتاب")
-        fh.write(f'<span style="display:none; string-set: book-title content(), chapter-title content()">'
-                 f'{_e(_truncate(book_title))}</span>\n')
-        fh.write(f'<span style="display:none; string-set: toc-number content()"></span>\n')
+        fh.write(
+            f'<span style="display:none; string-set: book-title content(), chapter-title content()">'
+            f"{_e(_truncate(book_title))}</span>\n"
+        )
+        fh.write(
+            f'<span style="display:none; string-set: toc-number content()"></span>\n'
+        )
 
         # ── COVER (ornate multi-layer design) ─────────────────────────
         fh.write('<div class="cover">\n')
@@ -3321,65 +3541,85 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
         fh.write('<div class="cover-corner cover-corner-br">&#10022;</div>\n')
 
         # Top ornament row
-        fh.write('<div class="cover-ornament-top">&#10022; &#10023; &#10022; &#10023; &#10022;</div>\n')
+        fh.write(
+            '<div class="cover-ornament-top">&#10022; &#10023; &#10022; &#10023; &#10022;</div>\n'
+        )
 
         # Bismillah
         fh.write('<div class="cover-bismillah">بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ</div>\n')
 
         # Decorative divider
-        fh.write('<div class="cover-divider">&#9473;&#9473;&#9473; &#10022; &#9473;&#9473;&#9473;</div>\n')
+        fh.write(
+            '<div class="cover-divider">&#9473;&#9473;&#9473; &#10022; &#9473;&#9473;&#9473;</div>\n'
+        )
 
         # Book title
-        fh.write(f'<h1>{_e(meta.get("title", "كتاب"))}</h1>\n')
+        fh.write(f"<h1>{_e(meta.get('title', 'كتاب'))}</h1>\n")
 
         # Juz label on per-volume covers
         if volume_label:
-            fh.write(f'<h2 style="text-align:center;color:#c9a84c;'
-                     f'margin:15px 0 5px 0;font-size:16pt;">'
-                     f'الجزء {_e(volume_label)}</h2>\n')
+            fh.write(
+                f'<h2 style="text-align:center;color:#c9a84c;'
+                f'margin:15px 0 5px 0;font-size:16pt;">'
+                f"الجزء {_e(volume_label)}</h2>\n"
+            )
 
         # Meta info table
         rows = []
-        for label, key in [("المؤلف", "author"), ("الناشر", "publisher"),
-                            ("الطبعة", "edition"), ("عدد الأجزاء", "volumes")]:
+        for label, key in [
+            ("المؤلف", "author"),
+            ("الناشر", "publisher"),
+            ("الطبعة", "edition"),
+            ("عدد الأجزاء", "volumes"),
+        ]:
             if meta.get(key):
-                rows.append(f'<tr><td class="meta-label">{_e(label)}</td>'
-                             f'<td>{_e(meta[key])}</td></tr>')
+                rows.append(
+                    f'<tr><td class="meta-label">{_e(label)}</td>'
+                    f"<td>{_e(meta[key])}</td></tr>"
+                )
         if rows:
             fh.write(f'<table class="meta-table">{"".join(rows)}</table>\n')
 
         # Bottom ornament
-        fh.write('<div class="cover-ornament-bottom">&#10022; &#10023; &#10022; &#10023; &#10022;</div>\n')
+        fh.write(
+            '<div class="cover-ornament-bottom">&#10022; &#10023; &#10022; &#10023; &#10022;</div>\n'
+        )
 
         # Source
-        fh.write(f'<p class="source">المصدر: {_e(meta.get("url",""))} | '
-                 f'تاريخ التحميل: {scraped_date}</p>\n')
-        fh.write('<p style="color:#c0392b;font-size:10pt;'
-                 'text-align:center;margin-top:10px;">'
-                 'مُستَخرَج من المكتبة الشاملة</p>\n')
+        fh.write(
+            f'<p class="source">المصدر: {_e(meta.get("url", ""))} | '
+            f"تاريخ التحميل: {scraped_date}</p>\n"
+        )
+        fh.write(
+            '<p style="color:#c0392b;font-size:10pt;'
+            'text-align:center;margin-top:10px;">'
+            "مُستَخرَج من المكتبة الشاملة</p>\n"
+        )
 
-        fh.write('</div><!-- cover-frame-inner -->\n')
-        fh.write('</div><!-- cover-frame-outer -->\n')
-        fh.write('</div><!-- cover -->\n')
+        fh.write("</div><!-- cover-frame-inner -->\n")
+        fh.write("</div><!-- cover-frame-outer -->\n")
+        fh.write("</div><!-- cover -->\n")
 
         # ── AUTHOR INFO ────────────────────────────────────────────────
         if author_info and not author_info.get("error") and author_info.get("bio"):
             fh.write('<div class="section-front">\n')
-            fh.write('<h2>ترجمة المؤلف</h2>\n')
+            fh.write("<h2>ترجمة المؤلف</h2>\n")
             if author_info.get("bio"):
                 fh.write('<div class="author-bio">\n')
                 for line in author_info["bio"].splitlines():
                     if line.strip():
-                        fh.write(f'<p>{_e(line.strip())}</p>\n')
-                fh.write('</div>\n')
+                        fh.write(f"<p>{_e(line.strip())}</p>\n")
+                fh.write("</div>\n")
             if author_info.get("url"):
-                fh.write(f'<p style="font-size:8pt;color:#aaa">'
-                         f'المصدر: {_e(author_info["url"])}</p>\n')
-            fh.write('</div>\n')
+                fh.write(
+                    f'<p style="font-size:8pt;color:#aaa">'
+                    f"المصدر: {_e(author_info['url'])}</p>\n"
+                )
+            fh.write("</div>\n")
 
         # ── BOOK PAGES ─────────────────────────────────────────────────
         fh.write('<div class="section-text">\n')
-        fh.write('<h2>نص الكتاب</h2>\n')
+        fh.write("<h2>نص الكتاب</h2>\n")
 
         buf: list[str] = []
         first_page = True
@@ -3388,21 +3628,31 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
         buf.append('<div class="section" style="page-break-before:auto;">\n')
         # If volumes exist, insert juz 1 label before first content
         if vol_starts_list and vol_labels_list:
-            buf.append(f'<div class="volume-divider">'
-                        f'<h2>الجزء {_e(vol_labels_list[0])}</h2></div>\n')
+            buf.append(
+                f'<div class="volume-divider">'
+                f"<h2>الجزء {_e(vol_labels_list[0])}</h2></div>\n"
+            )
 
         for page in _ensure_resolved(meta, pages_iter):
             pid = page.get("page_id")
 
             if pid and pid in vol_boundaries and not first_page:
-                buf.append('</div>\n')
+                buf.append("</div>\n")
                 buf.append('<div class="section">\n')
-                vol_label = vol_labels_list[vol_num[0]] if vol_labels_list else str(vol_num[0] + 1)
-                buf.append(f'<div class="volume-divider">'
-                            f'<h2>الجزء {_e(vol_label)}</h2></div>\n')
+                vol_label = (
+                    vol_labels_list[vol_num[0]]
+                    if vol_labels_list
+                    else str(vol_num[0] + 1)
+                )
+                buf.append(
+                    f'<div class="volume-divider">'
+                    f"<h2>الجزء {_e(vol_label)}</h2></div>\n"
+                )
                 vol_num[0] += 1
 
-            frag, _ = _render_page_html(page, toc_by_page, vol_boundaries, vol_num, max_toc_level)
+            frag, _ = _render_page_html(
+                page, toc_by_page, vol_boundaries, vol_num, max_toc_level
+            )
             buf.append(frag)
             first_page = False
 
@@ -3413,12 +3663,18 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
         if buf:
             fh.write("".join(buf))
 
-        fh.write('</div>\n')
-        fh.write('</body></html>\n')
+        fh.write("</div>\n")
+        fh.write("</body></html>\n")
 
 
-def build_pdf(meta: dict, author_info: dict, pages_iter, out_path: str,
-              flush_every: int = 50, volume_label: str | None = None):
+def build_pdf(
+    meta: dict,
+    author_info: dict,
+    pages_iter,
+    out_path: str,
+    flush_every: int = 50,
+    volume_label: str | None = None,
+):
     """
     Build a PDF from *pages_iter* (list or generator of page dicts).
 
@@ -3434,8 +3690,14 @@ def build_pdf(meta: dict, author_info: dict, pages_iter, out_path: str,
     html_path = Path(out_path).with_suffix(".html")
 
     print(f"  [html] streaming HTML → {html_path} ...")
-    build_html_to_file(meta, author_info, pages_iter, html_path,
-                       flush_every=flush_every, volume_label=volume_label)
+    build_html_to_file(
+        meta,
+        author_info,
+        pages_iter,
+        html_path,
+        flush_every=flush_every,
+        volume_label=volume_label,
+    )
     print(f"  [html] done ({html_path.stat().st_size // 1024} KB)")
 
     if WeasyprintHTML is None:
@@ -3443,6 +3705,7 @@ def build_pdf(meta: dict, author_info: dict, pages_iter, out_path: str,
         return
 
     import urllib.request
+
     file_url = urllib.request.pathname2url(str(html_path.resolve()))
     if not file_url.startswith("///"):
         file_url = "//" + file_url  # ensure absolute file:// URL on Linux
@@ -3457,8 +3720,15 @@ def build_pdf(meta: dict, author_info: dict, pages_iter, out_path: str,
 # FOLDER STRUCTURE: category / author / book
 # ═══════════════════════════════════════════════════════════════════════════
 
-def resolve_book_dir(out_dir: Path, manifest: Manifest, book_id: int,
-                      meta: dict, author_info: dict, category_label: str = None) -> Path:
+
+def resolve_book_dir(
+    out_dir: Path,
+    manifest: Manifest,
+    book_id: int,
+    meta: dict,
+    author_info: dict,
+    category_label: str = None,
+) -> Path:
     """
     Decide (once) where this book lives on disk:
         <out_dir>/<category_label or _uncategorized>/<author_id_author_name>/<book_id_title>/
@@ -3494,8 +3764,15 @@ def resolve_book_dir(out_dir: Path, manifest: Manifest, book_id: int,
 # PER-BOOK PIPELINE
 # ═══════════════════════════════════════════════════════════════════════════
 
-def process_book(session: requests.Session, book_id: int, out_dir: Path,
-                  manifest: Manifest, category_label: str, args) -> None:
+
+def process_book(
+    session: requests.Session,
+    book_id: int,
+    out_dir: Path,
+    manifest: Manifest,
+    category_label: str,
+    args,
+) -> None:
     book_id = int(book_id)
     entry = manifest.book(book_id)
 
@@ -3506,14 +3783,20 @@ def process_book(session: requests.Session, book_id: int, out_dir: Path,
         author_info = load_json(bd / "author_info.json")
         if meta and author_info is not None:
             book_dir = bd
-            print(f"[*] Using cached data for book {book_id} ({meta.get('title','?')})")
+            print(
+                f"[*] Using cached data for book {book_id} ({meta.get('title', '?')})"
+            )
             # Jump straight to heading resolution + PDF (skip network)
-            _build_book_outputs(meta, author_info, book_dir, book_id, args, entry, manifest)
+            _build_book_outputs(
+                meta, author_info, book_dir, book_id, args, entry, manifest
+            )
             return
-        print(f"  [!] Cached data incomplete for book {book_id}, falling back to network")
+        print(
+            f"  [!] Cached data incomplete for book {book_id}, falling back to network"
+        )
 
     if entry.get("status") == "done" and not args.force and not args.pdf_only:
-        print(f"[skip] book {book_id} ({entry.get('title','')}) — already done")
+        print(f"[skip] book {book_id} ({entry.get('title', '')}) — already done")
         return
 
     if args.force and entry.get("dir"):
@@ -3523,10 +3806,12 @@ def process_book(session: requests.Session, book_id: int, out_dir: Path,
 
     print(f"[*] Fetching metadata for book {book_id} ...")
     meta = fetch_book_meta(session, book_id)
-    print(f"    title  : {meta.get('title','?')}")
-    print(f"    author : {meta.get('author','?')}")
-    print(f"    toc    : {meta['toc_summary']['total_entries']} entries, "
-          f"max depth {meta['toc_summary']['max_depth']}")
+    print(f"    title  : {meta.get('title', '?')}")
+    print(f"    author : {meta.get('author', '?')}")
+    print(
+        f"    toc    : {meta['toc_summary']['total_entries']} entries, "
+        f"max depth {meta['toc_summary']['max_depth']}"
+    )
 
     # author info (cached across the whole run in the manifest)
     author_info = {}
@@ -3541,7 +3826,9 @@ def process_book(session: requests.Session, book_id: int, out_dir: Path,
             manifest.data["authors"][str(author_id)] = author_info
             time.sleep(args.delay)
 
-    book_dir = resolve_book_dir(out_dir, manifest, book_id, meta, author_info, category_label)
+    book_dir = resolve_book_dir(
+        out_dir, manifest, book_id, meta, author_info, category_label
+    )
     # resolve_book_dir may have derived the label from meta; capture it.
     category_label = category_label or meta.get("category_name")
 
@@ -3560,7 +3847,9 @@ def process_book(session: requests.Session, book_id: int, out_dir: Path,
     first_page = args.start_page
     if first_page == 1:
         vol_starts = meta.get("volume_start_pages")
-        toc_first = next((n["page_id"] for n in meta.get("toc_flat", []) if n.get("page_id")), None)
+        toc_first = next(
+            (n["page_id"] for n in meta.get("toc_flat", []) if n.get("page_id")), None
+        )
         # Prefer volume_start_pages[0] (always the true first page of the
         # book) over the first TOC entry's page_id, because the TOC may
         # start mid-book (e.g. volume 2) and skip all earlier content.
@@ -3573,11 +3862,19 @@ def process_book(session: requests.Session, book_id: int, out_dir: Path,
 
     # ── scrape (resumable) ──────────────────────────────────────────────
     if not args.pdf_only:
-        print(f"[*] Scraping pages for book {book_id} (starting at page_id={first_page}) ...")
+        print(
+            f"[*] Scraping pages for book {book_id} (starting at page_id={first_page}) ..."
+        )
         prog = scrape_book_pages_resumable(
-            session, book_id, book_dir,
-            start_page=first_page, meta=meta, limit=args.limit, delay=args.delay,
-            force=args.force, workers=getattr(args, "workers", 8),
+            session,
+            book_id,
+            book_dir,
+            start_page=first_page,
+            meta=meta,
+            limit=args.limit,
+            delay=args.delay,
+            force=args.force,
+            workers=getattr(args, "workers", 8),
         )
         entry["status"] = prog["status"]
         entry["last_page_id"] = prog.get("last_page_id")
@@ -3587,14 +3884,23 @@ def process_book(session: requests.Session, book_id: int, out_dir: Path,
         manifest.save()
         if prog["status"] == "error":
             print(f"[!] book {book_id} stopped early: {prog.get('error')}")
-            print(f"    re-run the same command later to resume from page_id={prog.get('next_page_id')}")
+            print(
+                f"    re-run the same command later to resume from page_id={prog.get('next_page_id')}"
+            )
             return
 
     _build_book_outputs(meta, author_info, book_dir, book_id, args, entry, manifest)
 
 
-def _build_book_outputs(meta: dict, author_info: dict, book_dir: Path,
-                        book_id: int, args, entry: dict, manifest: Manifest) -> None:
+def _build_book_outputs(
+    meta: dict,
+    author_info: dict,
+    book_dir: Path,
+    book_id: int,
+    args,
+    entry: dict,
+    manifest: Manifest,
+) -> None:
     """Heading resolution → combined JSON → PDF (shared by scrape and --pdf_only paths)."""
     pages_path = book_dir / "pages.jsonl"
     resolved_path = book_dir / "pages_resolved.jsonl"
@@ -3646,7 +3952,12 @@ def _build_book_outputs(meta: dict, author_info: dict, book_dir: Path,
             vol_pages, vol_labels = _merge_intro_volumes(vol_pages, vol_labels)
             meta["volume_start_pages"] = vol_pages
             meta["volume_labels"] = vol_labels
-        has_volumes = vol_pages and vol_labels and len(vol_pages) > 1 and not getattr(args, "single_pdf", False)
+        has_volumes = (
+            vol_pages
+            and vol_labels
+            and len(vol_pages) > 1
+            and not getattr(args, "single_pdf", False)
+        )
         if has_volumes:
             n_vols = len(vol_pages)
             for vi in range(n_vols):
@@ -3658,27 +3969,45 @@ def _build_book_outputs(meta: dict, author_info: dict, book_dir: Path,
                     vol_suffix = str(vi + 1).zfill(3)
                 pdf_name = f"book_{book_id}_{vol_suffix}.pdf"
                 pdf_path = book_dir / pdf_name
-                print(f"[*] Building PDF for book {book_id}, juz '{label}' ({lo}–{hi}) → {pdf_name} ...")
+                print(
+                    f"[*] Building PDF for book {book_id}, juz '{label}' ({lo}–{hi}) → {pdf_name} ..."
+                )
                 vol_iter = _pages_by_volume(
                     iter_pages_jsonl(resolved_path), vol_pages, vi
                 )
-                vol_iter = _prefix_headings_by_juz(vol_iter, vol_pages, include_juz_prefix=False)
-                build_pdf(meta, author_info, vol_iter, str(pdf_path),
-                          flush_every=getattr(args, "flush_every", 50),
-                          volume_label=label)
+                vol_iter = _prefix_headings_by_juz(
+                    vol_iter, vol_pages, include_juz_prefix=False
+                )
+                build_pdf(
+                    meta,
+                    author_info,
+                    vol_iter,
+                    str(pdf_path),
+                    flush_every=getattr(args, "flush_every", 50),
+                    volume_label=label,
+                )
         else:
             pdf_path = book_dir / f"book_{book_id}.pdf"
             pages_iter = iter_pages_jsonl(resolved_path)
             if vol_pages and len(vol_pages) > 1 and getattr(args, "single_pdf", False):
                 if getattr(args, "no_juz_outline", False):
-                    print(f"[*] Building combined PDF for book {book_id} (plain, no juz outline) ...")
+                    print(
+                        f"[*] Building combined PDF for book {book_id} (plain, no juz outline) ..."
+                    )
                 else:
                     pages_iter = _prefix_headings_by_juz(pages_iter, vol_pages)
-                    print(f"[*] Building combined PDF for book {book_id} (with juz outline) ...")
+                    print(
+                        f"[*] Building combined PDF for book {book_id} (with juz outline) ..."
+                    )
             else:
                 print(f"[*] Building PDF for book {book_id} ...")
-            build_pdf(meta, author_info, pages_iter, str(pdf_path),
-                      flush_every=getattr(args, "flush_every", 50))
+            build_pdf(
+                meta,
+                author_info,
+                pages_iter,
+                str(pdf_path),
+                flush_every=getattr(args, "flush_every", 50),
+            )
 
     # Only mark "done" when scraping was actually performed and completed.
     # --pdf_only must never change the scraping status, so interrupted
@@ -3695,6 +4024,7 @@ def _build_book_outputs(meta: dict, author_info: dict, book_dir: Path,
 # QUEUE BUILDING (category ids + explicit book ids)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def build_book_queue(session: requests.Session, args, manifest: Manifest) -> list:
     queue = []  # list of (book_id, category_label_or_None)
 
@@ -3704,14 +4034,18 @@ def build_book_queue(session: requests.Session, args, manifest: Manifest) -> lis
             cached = manifest.data["categories"].get(str(cid_int))
             if cached and not args.refresh_categories:
                 cat_info = cached
-                print(f"[*] Category {cid_int} ({cat_info.get('name')}) — using cached list "
-                      f"({len(cat_info['books'])} books). Use --refresh_categories to re-fetch.")
+                print(
+                    f"[*] Category {cid_int} ({cat_info.get('name')}) — using cached list "
+                    f"({len(cat_info['books'])} books). Use --refresh_categories to re-fetch."
+                )
             else:
                 print(f"[*] Fetching category {cid_int} ...")
                 cat_info = fetch_category_books(session, cid_int, delay=args.delay)
                 manifest.data["categories"][str(cid_int)] = cat_info
                 manifest.save()
-                print(f"    → {len(cat_info['books'])} books found in '{cat_info.get('name')}'")
+                print(
+                    f"    → {len(cat_info['books'])} books found in '{cat_info.get('name')}'"
+                )
 
             label = f"{cid_int}_{cat_info.get('name') or 'category'}"
             for b in cat_info["books"]:
@@ -3748,43 +4082,116 @@ def print_status(manifest: Manifest):
         print(f"  {status:12s}: {n}")
     print()
     for bid, b in books.items():
-        print(f"  [{b.get('status','?'):10s}] {bid:>8s}  {b.get('title','?')[:60]}  "
-              f"({b.get('pages_scraped',0)} pages)  → {b.get('dir','?')}")
+        print(
+            f"  [{b.get('status', '?'):10s}] {bid:>8s}  {b.get('title', '?')[:60]}  "
+            f"({b.get('pages_scraped', 0)} pages)  → {b.get('dir', '?')}"
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # MAIN
 # ═══════════════════════════════════════════════════════════════════════════
 
-def main():
-    parser = argparse.ArgumentParser(description="Scrape shamela.ws book(s)/categories to JSON + PDF")
-    parser.add_argument("--book_id", type=int, default=None, help="Single Shamela book ID (legacy)")
-    parser.add_argument("--book_ids", default=None, help="Comma-separated list of book IDs, e.g. 12762,667")
-    parser.add_argument("--category_ids", default=None, help="Comma-separated list of category IDs, e.g. 13,33,40")
-    parser.add_argument("--out_dir", default="./shamela_output", help="Root output directory")
-    parser.add_argument("--delay", type=float, default=1, # 0.25
-                        help="Base courtesy delay in seconds (default 0.25; "
-                             "stagger only applied to first-batch pages)")
-    parser.add_argument("--workers", type=int, default=4, # 16
-                        help="Concurrent page-fetch threads (default 16; "
-                             "increase for speed, decrease if rate-limited)")
-    parser.add_argument("--start_page", type=int, default=1, help="First page ID to scrape (per book, if not resuming)")
-    parser.add_argument("--limit", type=int, default=None, help="Max pages to scrape PER BOOK")
-    parser.add_argument("--cf_clearance", default=None, help="Cloudflare cf_clearance cookie value")
-    parser.add_argument("--user-agent", "--ua", default=None,
-                        help="Your browser's User-Agent string. Must match the browser "
-                             "that generated cf_clearance.")
 
-    parser.add_argument("--json_only", action="store_true", help="Only scrape + save JSON, skip PDF")
-    parser.add_argument("--pdf_only", action="store_true", help="Rebuild PDF from already-scraped data, skip network page-scraping")
-    parser.add_argument("--single_pdf", action="store_true", help="Generate a single combined PDF even when the book has ajza'/volumes")
-    parser.add_argument("--no_juz_outline", action="store_true", help="With --single_pdf: build combined PDF without juz numbering in headings (old-style)")
-    parser.add_argument("--force", action="store_true", help="Re-scrape books even if already marked done")
-    parser.add_argument("--refresh_categories", action="store_true", help="Re-fetch category book listings instead of using cached manifest copy")
-    parser.add_argument("--max_books", type=int, default=None, help="Cap total number of books processed this run (testing)")
-    parser.add_argument("--status", action="store_true", help="Print manifest status summary and exit (no scraping)")
-    parser.add_argument("--flush_every", type=int, default=50,
-                        help="Flush HTML buffer to disk every N pages during PDF build (lower = less RAM, default 50)")
+def main():
+    parser = argparse.ArgumentParser(
+        description="Scrape shamela.ws book(s)/categories to JSON + PDF"
+    )
+    parser.add_argument(
+        "--book_id", type=int, default=None, help="Single Shamela book ID (legacy)"
+    )
+    parser.add_argument(
+        "--book_ids",
+        default=None,
+        help="Comma-separated list of book IDs, e.g. 12762,667",
+    )
+    parser.add_argument(
+        "--category_ids",
+        default=None,
+        help="Comma-separated list of category IDs, e.g. 13,33,40",
+    )
+    parser.add_argument(
+        "--out_dir", default="./shamela_output", help="Root output directory"
+    )
+    parser.add_argument(
+        "--delay",
+        type=float,
+        default=1,  # 0.25
+        help="Base courtesy delay in seconds (default 0.25; "
+        "stagger only applied to first-batch pages)",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,  # 16
+        help="Concurrent page-fetch threads (default 16; "
+        "increase for speed, decrease if rate-limited)",
+    )
+    parser.add_argument(
+        "--start_page",
+        type=int,
+        default=1,
+        help="First page ID to scrape (per book, if not resuming)",
+    )
+    parser.add_argument(
+        "--limit", type=int, default=None, help="Max pages to scrape PER BOOK"
+    )
+    parser.add_argument(
+        "--cf_clearance", default=None, help="Cloudflare cf_clearance cookie value"
+    )
+    parser.add_argument(
+        "--user-agent",
+        "--ua",
+        default=None,
+        help="Your browser's User-Agent string. Must match the browser "
+        "that generated cf_clearance.",
+    )
+
+    parser.add_argument(
+        "--json_only", action="store_true", help="Only scrape + save JSON, skip PDF"
+    )
+    parser.add_argument(
+        "--pdf_only",
+        action="store_true",
+        help="Rebuild PDF from already-scraped data, skip network page-scraping",
+    )
+    parser.add_argument(
+        "--single_pdf",
+        action="store_true",
+        help="Generate a single combined PDF even when the book has ajza'/volumes",
+    )
+    parser.add_argument(
+        "--no_juz_outline",
+        action="store_true",
+        help="With --single_pdf: build combined PDF without juz numbering in headings (old-style)",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-scrape books even if already marked done",
+    )
+    parser.add_argument(
+        "--refresh_categories",
+        action="store_true",
+        help="Re-fetch category book listings instead of using cached manifest copy",
+    )
+    parser.add_argument(
+        "--max_books",
+        type=int,
+        default=None,
+        help="Cap total number of books processed this run (testing)",
+    )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Print manifest status summary and exit (no scraping)",
+    )
+    parser.add_argument(
+        "--flush_every",
+        type=int,
+        default=50,
+        help="Flush HTML buffer to disk every N pages during PDF build (lower = less RAM, default 50)",
+    )
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir)
@@ -3796,7 +4203,9 @@ def main():
         return
 
     if not args.book_id and not args.book_ids and not args.category_ids:
-        parser.error("Provide at least one of --book_id, --book_ids, or --category_ids (or --status)")
+        parser.error(
+            "Provide at least one of --book_id, --book_ids, or --category_ids (or --status)"
+        )
 
     session = CloudflareCookieManager(
         get_session(user_agent=args.user_agent),
@@ -3824,6 +4233,7 @@ def main():
             sys.exit(1)
         except Exception as e:
             import traceback as _tb
+
             print(f"[!] Unhandled error on book {book_id}: {e}")
             _tb.print_exc()
             entry = manifest.book(book_id)
@@ -3839,7 +4249,9 @@ def main():
         if i < len(queue):
             time.sleep(args.delay)
 
-    print(f"\n[✓] Run finished. done={done}  error/incomplete={errors}  total={len(queue)}")
+    print(
+        f"\n[✓] Run finished. done={done}  error/incomplete={errors}  total={len(queue)}"
+    )
     for bid, _ in queue:
         entry = manifest.book(bid)
         st = entry.get("status", "?")
@@ -3850,7 +4262,9 @@ def main():
             detail += f"  (next_page_id={entry.get('next_page_id')}, pages_scraped={entry.get('pages_scraped')})"
         print(detail)
     print(f"    Manifest: {manifest.path}")
-    print(f"    Run again with the same command at any time to resume incomplete books.")
+    print(
+        f"    Run again with the same command at any time to resume incomplete books."
+    )
 
 
 if __name__ == "__main__":
