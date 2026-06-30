@@ -927,6 +927,12 @@ def _prefix_headings_by_juz(pages_iter, vol_start_pages: list[int],
             level = raw_level - base
             if level < 0:
                 level = 0
+            # In single-PDF mode, headings at normalized level >= 2
+            # (which would produce 4+ parts with the juz prefix)
+            # are subtitles and should NOT be numbered at all.
+            if include_juz_prefix and level > 1:
+                h["number"] = ""
+                continue
             if level >= len(counters):
                 counters.extend([0] * (level - len(counters) + 1))
             for i in range(level):
@@ -937,10 +943,10 @@ def _prefix_headings_by_juz(pages_iter, vol_start_pages: list[int],
             counters[level] += 1
             for i in range(level + 1, len(counters)):
                 counters[i] = 0
+            parts = [str(counters[i]) for i in range(level + 1)]
             if include_juz_prefix:
-                h["number"] = f"{prefix}.{'.'.join(str(counters[i]) for i in range(level + 1))}"
-            else:
-                h["number"] = ".".join(str(counters[i]) for i in range(level + 1))
+                parts.insert(0, str(prefix))
+            h["number"] = ".".join(parts)
 
         for ue in page.get("unanchored_toc_entries", []):
             if ue.get("number"):
@@ -950,6 +956,14 @@ def _prefix_headings_by_juz(pages_iter, vol_start_pages: list[int],
                             and h["level"] == ue["level"]):
                         ue["number"] = h["number"]
                         break
+
+        # Rebuild toc_number from the (possibly capped) heading numbers
+        nums = [
+            h["number"] for h in page.get("resolved_headings", [])
+            if h.get("number") and not h.get("auto")
+        ]
+        if nums:
+            page["toc_number"] = f"{nums[0]}-{nums[-1]}" if len(nums) > 1 else nums[0]
 
         yield page
 
@@ -1962,7 +1976,10 @@ def _build_html_css(meta: dict) -> str:
         font-size: 16pt;
         color: #4a4a4a;
     }}
-    .toc-numbered-heading.toc-nh-8,
+    .toc-numbered-heading.toc-nh-8 {{
+        font-size: 16pt;
+        color: #2e6b8a;
+    }}
     .toc-numbered-heading.toc-nh-9 {{
         font-size: 16pt;
         color: #555;
@@ -2036,6 +2053,17 @@ _TASHKEEL_RE = re.compile(r'[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]')
 def _normalize_ar(s: str) -> str:
     """Normalize Arabic for comparing page text against a TOC label."""
     s = _plain_text(s)
+    # Normalise common Arabic letter variants: alif forms → bare alif,
+    # alif maqsura → yaa, taa marbouta → haa, hamza-on-waw → waw,
+    # hamza-on-ya → yaa.  This catches OCR / spelling mismatches
+    # like متآخرو vs متأخرو or رأي vs رأى.
+    s = s.replace("\u0622", "\u0627")   # آ → ا
+    s = s.replace("\u0623", "\u0627")   # أ → ا
+    s = s.replace("\u0625", "\u0627")   # إ → ا
+    s = s.replace("\u0649", "\u064A")   # ى → ي
+    s = s.replace("\u0629", "\u0647")   # ة → ه
+    s = s.replace("\u0624", "\u0648")   # ؤ → و
+    s = s.replace("\u0626", "\u064A")   # ئ → ي
     s = _TASHKEEL_RE.sub("", s)
     # Replace Arabic punctuation with space so labels that differ only by
     # commas, dashes, etc. still match (e.g. TOC "طيب في نفسه صاحب خير" vs
@@ -2043,6 +2071,9 @@ def _normalize_ar(s: str) -> str:
     s = re.sub(r'[،؟!\.\,\;\:\-\(\)\[\]\{\}]', ' ', s)
     s = s.strip(_BRACKET_STRIP_CHARS + " :،ـ")
     s = re.sub(r"\s+", " ", s).strip()
+    # Strip leading Arabic-Indic / Latin digits followed by a separator
+    # so eg body "١- رأى أرسطوطاليس..." matches TOC "رأي أرسطوطاليس...".
+    s = re.sub(r'^[\u0660-\u06690-9]+[\s\-\.\)\]\}]*', '', s).strip()
     return s
 
 
@@ -2156,6 +2187,8 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
         if para.get("type") == "hamesh":
             continue
         for li, line in enumerate(para.get("lines", [])):
+            if _bracket_stripped(line) is not None:
+                continue
             norm = _normalize_ar(line)
             if norm:
                 flat_lines.append((pi, li, norm))
@@ -2913,7 +2946,7 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
             label_text = _e(h["text"])
             return (f'<p class="toc-numbered-heading toc-nh-{nh_class}">'
                     f'{label_text}</p>\n')
-        label_text = f'{num}. {_e(h["text"])}' if level < 3 else _e(h["text"])
+        label_text = f'{num}. {_e(h["text"])}' if num and level < 3 else _e(h["text"])
         nh_class = level
         return (f'<p class="toc-numbered-heading toc-nh-{nh_class} toc-bm-{level}">'
                 f'{label_text}</p>\n')
