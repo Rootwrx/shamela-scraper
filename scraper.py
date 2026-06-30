@@ -1921,9 +1921,8 @@ def _build_html_css(meta: dict) -> str:
        ═══════════════════════════════════════════════════════ */
     .toc-numbered-heading {{
         font-family: {font_body};
-        font-size: 15pt;
-        font-weight: 800;
-        color: {TEAL};
+        font-size: 16pt;
+        font-weight: 700;
         margin: 0.25em 0 0.15em 0;
         padding: 0;
         line-height: 1.5;
@@ -1931,13 +1930,12 @@ def _build_html_css(meta: dict) -> str:
         prince-bookmark-level: none;
     }}
     .toc-numbered-heading.toc-nh-0 {{
-        font-size: 20pt;
+        font-size: 18pt;
         color: {GOLD_L};
-        margin-top: 0.1em;
     }}
     .toc-numbered-heading.toc-nh-1,
     .toc-numbered-heading.toc-nh-implicit {{
-        font-size: 18pt;
+        font-size: 17pt;
         color: {RUST};
     }}
     .toc-numbered-heading.toc-nh-2 {{
@@ -1945,29 +1943,34 @@ def _build_html_css(meta: dict) -> str:
         color: {TEAL};
     }}
     .toc-numbered-heading.toc-nh-3 {{
-        font-size: 15pt;
+        font-size: 16pt;
         color: {SEPIA};
     }}
-    /* Auto-detected bracket headings with no matching TOC entry. */
+    .toc-numbered-heading.toc-nh-4 {{
+        font-size: 16pt;
+        color: #2d6a4f;
+    }}
+    .toc-numbered-heading.toc-nh-5 {{
+        font-size: 16pt;
+        color: #6a0dad;
+    }}
+    .toc-numbered-heading.toc-nh-6 {{
+        font-size: 16pt;
+        color: #8b4513;
+    }}
+    .toc-numbered-heading.toc-nh-7 {{
+        font-size: 16pt;
+        color: #4a4a4a;
+    }}
+    .toc-numbered-heading.toc-nh-8,
+    .toc-numbered-heading.toc-nh-9 {{
+        font-size: 16pt;
+        color: #555;
+    }}
+    /* Auto-detected bracket headings — italic */
     .toc-numbered-heading.toc-nh-auto {{
         font-style: italic;
-        color: #8a8a8a;
-        font-weight: 600;
     }}
-    .toc-numbered-heading.toc-nh-auto::before {{
-        content: "";
-        display: inline-block;
-        width: 0.45em;
-        height: 0.45em;
-        border-radius: 50%;
-        background: #8b0000;
-        margin-left: 0.4em;
-        vertical-align: middle;
-    }}
-
-
-
-
 
 
     /* ═══════════════════════════════════════════════════════
@@ -2027,13 +2030,17 @@ def _plain_text(html_frag: str) -> str:
     return _html_mod.unescape(stripped)
 
 
-_BRACKET_STRIP_CHARS = "[]（）().「」【】《》〈〉"
+_BRACKET_STRIP_CHARS = "-[]（）().「」【】《》〈〉"
 _TASHKEEL_RE = re.compile(r'[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]')
 
 def _normalize_ar(s: str) -> str:
     """Normalize Arabic for comparing page text against a TOC label."""
     s = _plain_text(s)
     s = _TASHKEEL_RE.sub("", s)
+    # Replace Arabic punctuation with space so labels that differ only by
+    # commas, dashes, etc. still match (e.g. TOC "طيب في نفسه صاحب خير" vs
+    # body "طيب في نفسه، صاحب خير").
+    s = re.sub(r'[،؟!\.\,\;\:\-\(\)\[\]\{\}]', ' ', s)
     s = s.strip(_BRACKET_STRIP_CHARS + " :،ـ")
     s = re.sub(r"\s+", " ", s).strip()
     return s
@@ -2063,9 +2070,6 @@ def _extract_bracket_headings(paras: list[dict] | None) -> list[dict]:
     return found
 
 
-def _label_words(norm_label: str) -> list[str]:
-    return [w for w in norm_label.split() if len(w) >= 2]
-
 
 def _has_extra_content(line_html: str, norm_label: str) -> bool:
     """
@@ -2079,12 +2083,14 @@ def _has_extra_content(line_html: str, norm_label: str) -> bool:
     on lines like "[عنوان]" where the brackets are the only "extra" content.
     """
     plain = _plain_text(line_html).strip()
-    # Strip the same edge chars _normalize_ar strips (brackets, punctuation)
-    # but keep parenthesised groups intact so "(١)" is still detected.
+    # Align with _normalize_ar: replace punctuation (except parentheses,
+    # which would break footnote detection like (١)) with spaces.
+    plain = re.sub(r'[،؟!\.\,\;\:\-]', ' ', plain)
+    plain = re.sub(r"\s+", " ", plain).strip()
     plain_stripped = plain.strip(_BRACKET_STRIP_CHARS + " :،ـ")
     plain_no_tashkeel = _TASHKEEL_RE.sub("", plain_stripped).strip()
     norm_label_plain  = _TASHKEEL_RE.sub("", norm_label).strip()
-    return len(plain_no_tashkeel) > len(norm_label_plain)
+    return len(plain_no_tashkeel) > len(norm_label_plain) + 3
 
 
 def _find_label_in_lines(norm_label: str, flat_lines: list[tuple[int, int, str]],
@@ -2110,14 +2116,6 @@ def _find_label_in_lines(norm_label: str, flat_lines: list[tuple[int, int, str]]
             if (span_len == 1 and len(norm_label) >= 4
                     and flat_lines[start][2].startswith(norm_label)):
                 return (start, start + 1), flat_lines[start][2] != norm_label
-
-    label_words = _label_words(norm_label)
-    for start in range(cursor, len(flat_lines)):
-        line_norm = flat_lines[start][2]
-        if len(norm_label) >= 4 and norm_label in line_norm:
-            return (start, start + 1), line_norm != norm_label
-        if label_words and all(w in line_norm for w in label_words):
-            return (start, start + 1), line_norm != norm_label
 
     # Fallback: label appears at the start of a line followed by a
     # non-alphanumeric character.  This handles TOC labels that are
@@ -2243,15 +2241,15 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
             start, end = found_span
             positions = [(flat_lines[i][0], flat_lines[i][1]) for i in range(start, end)]
 
-            # Post-check: upgrade keep_line if any matched raw line has content
-            # that normalization silently stripped (e.g. footnote refs like (١)).
-            # We access the raw line directly from paras using (pi, li).
-            if not keep_line and end - start == 1:
+            # Post-check: determine keep_line based on actual extra content.
+            # The _find_label_in_lines return value can be wrong when
+            # punctuation like "-" inflates the raw line length even though
+            # the only real extra content is trivial (e.g. a period).
+            if end - start == 1:
                 pi, li = positions[0]
                 raw_line = (paras[pi].get("lines") or [])[li] if paras and pi < len(paras) else ""
-                if raw_line and _has_extra_content(raw_line, norm_label):
-                    keep_line = True
-
+                if raw_line:
+                    keep_line = _has_extra_content(raw_line, norm_label)
             # Only hoist to page-top when the heading is literally the first
             # content on the page (start == cursor == 0).
             # "start > cursor and cursor == 0" must NOT hoist: body text before
@@ -2263,7 +2261,7 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
                 _append_top({
                     "text": label, "level": level, "number": number,
                     "matched": True, "auto": False, "implicit": False,
-                    "keep_line": keep_line, "suppress": [] if keep_line else list(positions),
+                    "keep_line": keep_line, "suppress": [],
                     "toc_parent_text": parent_text,
                     "_uid": number, "toc_parent_uid": parent_number,
                 })
@@ -2271,12 +2269,11 @@ def _locate_toc_headings_in_page(paras: list[dict] | None,
                 # Heading found mid-page (after prior body text or a prior
                 # heading).  Keep inline so content flows between sections.
                 _flush_pending_before_child(positions)
-                suppress = [] if keep_line else list(positions)
                 resolved.append({
                     "positions": positions, "text": label, "level": level,
                     "number": number, "matched": True, "auto": False,
                     "implicit": False, "keep_line": keep_line,
-                    "suppress": suppress, "at_page_top": False,
+                    "suppress": [], "at_page_top": False,
                     "toc_parent_text": parent_text,
                     "_uid": number, "toc_parent_uid": parent_number,
                 })
@@ -2848,7 +2845,7 @@ def _renumber_headings_by_document_order(resolved_path: Path) -> None:
 
 
 def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
-                       vol_num_ref: list) -> tuple[str, int]:
+                       vol_num_ref: list, max_toc_level: int = 3) -> tuple[str, int]:
     parts = []
     pid = page.get("page_id")
     vol_num = vol_num_ref[0]
@@ -2899,21 +2896,68 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
             h.get("_before_child_slot", 0),
         ))
 
+    # ── Render every heading visibly with per-level color ──────
+    # All matched headings render as visible styled headings.
+    # For keep_line=True: body line has extra text beyond the label,
+    #   so the body shows as well (with Shamela's teal <span class="c5">
+    #   stripped to avoid duplicate coloring).
+    # For keep_line=False: body IS the label → suppress the body line.
+    # implicit/auto/before_child → artificial placement; text differs
+    #   from the body at that position → body shows as-is.
+
     def _heading_html(h: dict) -> str:
+        num = h.get("number", "")
+        level = h["level"]
         if h.get("auto"):
             nh_class = "auto"
             label_text = _e(h["text"])
-            bm_class = ""
-        elif h.get("implicit"):
-            nh_class = "implicit"
-            label_text = f'{h["number"]}. {_e(h["text"])}'
-            bm_class = f' toc-bm-{h["level"]}'
-        else:
-            nh_class = h["level"]
-            label_text = f'{h["number"]}. {_e(h["text"])}'
-            bm_class = f' toc-bm-{h["level"]}'
-        return (f'<p class="toc-numbered-heading toc-nh-{nh_class}{bm_class}">'
+            return (f'<p class="toc-numbered-heading toc-nh-{nh_class}">'
+                    f'{label_text}</p>\n')
+        label_text = f'{num}. {_e(h["text"])}' if level < 3 else _e(h["text"])
+        nh_class = level
+        return (f'<p class="toc-numbered-heading toc-nh-{nh_class} toc-bm-{level}">'
                 f'{label_text}</p>\n')
+
+    def _strip_body_color(body_line: str) -> str:
+        """Strip leading Shamela teal span (c5 class or #005c81) from body line."""
+        import re
+        cleaned = re.sub(
+            r'^<span[^>]*(?:class="?c5"?|color:#005c81)[^>]*>.*?</span>\s*',
+            '', body_line, count=1
+        ).strip()
+        return cleaned
+
+    def _strip_heading_prefix(body: str, heading_text: str) -> str:
+        """Strip the heading label from the start of the body text (if present)
+        so the body doesn't repeat the number and first words."""
+        ht = heading_text.strip()
+        if body.startswith(ht):
+            remaining = body[len(ht):].strip().lstrip(' ,.-،:')
+            return remaining
+        # Try normalized comparison for minor differences (commas, shadda, etc.)
+        nbody = _normalize_ar(body)
+        nht = _normalize_ar(ht)
+        if nbody.startswith(nht):
+            # Walk raw body char by char, skipping characters that
+            # normalise away (e.g. tashkeel, punctuation), and skipping
+            # spaces in the normalised heading (they come from punctuation
+            # that was normalised away), matching the rest in order.
+            i = 0
+            matched = 0
+            while i < len(body) and matched < len(nht):
+                if nht[matched] == ' ':
+                    matched += 1
+                    continue
+                chunk = _normalize_ar(body[i])
+                if chunk:
+                    if chunk[0] == nht[matched]:
+                        matched += 1
+                    else:
+                        return body
+                i += 1
+            remaining = body[i:].strip().lstrip(' ,.-،:')
+            return remaining
+        return body
 
     entry_open = [False]
 
@@ -2951,19 +2995,40 @@ def _render_page_html(page: dict, toc_by_page: dict, vol_boundaries: set,
                 if headings_here:
                     for heading in headings_here:
                         parts.append(_heading_html(heading))
-                    # Skip the source line unless the last real (non-before_child) heading wants it
-                    last_real = next(
-                        (h for h in reversed(headings_here) if not h.get("before_child")),
-                        None
-                    )
-                    if last_real is None or not last_real.get("keep_line"):
+                    real_headings = [
+                        h for h in headings_here
+                        if not (h.get("implicit") or h.get("auto") or h.get("before_child"))
+                    ]
+                    if real_headings:
+                        if all(not h.get("keep_line", True) for h in real_headings):
+                            pass  # body IS the label → suppress
+                        else:
+                            body_line = _strip_body_color(line.strip())
+                            if body_line:
+                                # Strip the heading label prefix so the body
+                                # doesn't repeat the number and first words.
+                                for rh in real_headings:
+                                    stripped = _strip_heading_prefix(body_line, rh["text"])
+                                    if stripped and stripped != body_line:
+                                        body_line = stripped
+                                        break
+                                if body_line:
+                                    tag = 'p class="chapter-heading"' if ptype == "heading" else 'p'
+                                    parts.append(f'<{tag}>{body_line}</{tag.split()[0]}>')
                         continue
-                if (pi, li) in suppressed_positions:
+                    # All artificial headings → show body as-is
+                    body_line = line.strip()
+                    if body_line:
+                        tag = 'p class="chapter-heading"' if ptype == "heading" else 'p'
+                        parts.append(f'<{tag}>{body_line}</{tag.split()[0]}>')
                     continue
+                elif (pi, li) in suppressed_positions:
+                    continue
+                body_line = line.strip()
                 if ptype == "heading":
-                    parts.append(f'<p class="chapter-heading">{line.strip()}</p>')
+                    parts.append(f'<p class="chapter-heading">{body_line}</p>')
                 else:
-                    parts.append(f'<p>{line.strip()}</p>')
+                    parts.append(f'<p>{body_line}</p>')
     elif page.get("text"):
         for chunk in page["text"].split("\n\n"):
             if chunk.strip():
@@ -2981,10 +3046,20 @@ def _ensure_resolved(meta: dict, pages_iter):
         return
 
     chained = itertools.chain([first], pages_iter)
+    seen_ids: set[int] = set()
+
     if "resolved_headings" in first:
-        yield from chained
+        pages = chained
     else:
-        yield from resolve_book_headings(meta, chained)
+        pages = resolve_book_headings(meta, chained)
+
+    for page in pages:
+        pid = page.get("url_page_id") or page.get("page_id")
+        if pid is not None:
+            if pid in seen_ids:
+                continue
+            seen_ids.add(pid)
+        yield page
 
 
 def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path,
@@ -3005,11 +3080,15 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
     # Build page_id -> [(label, toc_level), ...] lookup
     toc_flat = meta.get("toc_flat", [])
     toc_by_page: dict = {}
+    max_toc_level = -1
     for entry in toc_flat:
+        lvl = entry.get("level", 0)
+        if lvl > max_toc_level:
+            max_toc_level = lvl
         pid = entry.get("page_id")
         if pid is not None:
             toc_by_page.setdefault(pid, []).append(
-                (entry.get("label", ""), entry.get("level", 0))
+                (entry.get("label", ""), lvl)
             )
 
     if volume_label is None:
@@ -3131,7 +3210,7 @@ def build_html_to_file(meta: dict, author_info: dict, pages_iter, out_path: Path
                             f'<h2>الجزء {_e(vol_label)}</h2></div>\n')
                 vol_num[0] += 1
 
-            frag, _ = _render_page_html(page, toc_by_page, vol_boundaries, vol_num)
+            frag, _ = _render_page_html(page, toc_by_page, vol_boundaries, vol_num, max_toc_level)
             buf.append(frag)
             first_page = False
 
