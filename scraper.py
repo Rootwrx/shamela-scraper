@@ -1099,6 +1099,8 @@ def _prefix_headings_by_juz(
 
     current_vi = -1
     counters: list[int] = [0] * 20
+    # Track auto heading texts to suppress duplicate implicit outline entries
+    auto_texts_in_volume: set[str] = set()
     # Track the minimum heading level seen so far per volume.
     # This lets us normalise headings progressively: the first heading
     # always becomes level 0, and any subsequent shallower heading
@@ -1119,6 +1121,7 @@ def _prefix_headings_by_juz(
         if vi != current_vi:
             current_vi = vi
             counters = [0] * 20
+            auto_texts_in_volume.clear()
 
         prefix = vi + 1
         base = min_level_seen.get(vi, 0)
@@ -1126,9 +1129,6 @@ def _prefix_headings_by_juz(
         for h in page.get("resolved_headings", []):
             if not h.get("number"):
                 continue
-            if h.get("auto"):
-                continue
-
             raw_level = h.get("level", 0)
 
             # Update progressive minimum level for this volume
@@ -1139,6 +1139,7 @@ def _prefix_headings_by_juz(
             level = raw_level - base
             if level < 0:
                 level = 0
+            h["_nh_level"] = level
             # In single-PDF mode, headings at normalized level >= 2
             # (which would produce 4+ parts with the juz prefix)
             # are subtitles and should NOT be numbered at all.
@@ -1147,18 +1148,39 @@ def _prefix_headings_by_juz(
                 continue
             if level >= len(counters):
                 counters.extend([0] * (level - len(counters) + 1))
-            for i in range(level):
-                if counters[i] == 0:
-                    counters[i] = 1
-                    for j in range(i + 1, level + 1):
-                        counters[j] = 0
-            counters[level] += 1
-            for i in range(level + 1, len(counters)):
-                counters[i] = 0
-            parts = [str(counters[i]) for i in range(level + 1)]
+
+            # Auto headings (bracket-detected) don't consume counter slots:
+            # they use the next available number without advancing the sequence.
+            # This prevents an auto heading on a volume-boundary page from
+            # shifting the numbering of the real TOC heading(s).
+            if h.get("auto"):
+                parts = []
+                for i in range(level + 1):
+                    if i == level:
+                        parts.append(str(counters[i] + 1))
+                    else:
+                        parts.append(
+                            str(counters[i] if counters[i] > 0 else 1)
+                        )
+            else:
+                for i in range(level):
+                    if counters[i] == 0:
+                        counters[i] = 1
+                        for j in range(i + 1, level + 1):
+                            counters[j] = 0
+                counters[level] += 1
+                for i in range(level + 1, len(counters)):
+                    counters[i] = 0
+                parts = [str(counters[i]) for i in range(level + 1)]
+
             if include_juz_prefix:
                 parts.insert(0, str(prefix))
             h["number"] = ".".join(parts)
+
+            if h.get("auto") and h.get("text"):
+                auto_texts_in_volume.add(h["text"])
+            elif h.get("implicit") and h.get("text") and h["text"] in auto_texts_in_volume:
+                h["_skip_outline"] = True
 
         for ue in page.get("unanchored_toc_entries", []):
             if ue.get("number"):
@@ -2868,6 +2890,7 @@ def resolve_book_headings(meta: dict, pages_iter):
                     "matched": False,
                     "auto": True,
                     "implicit": False,
+                    "keep_line": False,
                 }
             )
 
@@ -3300,30 +3323,23 @@ def _render_page_html(
     def _heading_html(h: dict) -> str:
         num = h.get("number", "")
         level = h["level"]
+        nh_level = h.get("_nh_level", level)
         if h.get("auto"):
             label_text = _e(h["text"])
             bm_label = f"{num}. {label_text}" if num else label_text
             return (
-                f'<p class="toc-bookmark-anchor toc-bm-{level}">{bm_label}</p>\n'
-                f'<p class="toc-numbered-heading toc-nh-auto">{label_text}</p>\n'
+                f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{bm_label}</p>\n'
+                f'<p class="toc-numbered-heading toc-nh-{nh_level}">{label_text}</p>\n'
             )
         if h.get("implicit"):
-            # Not visible in content — emit only an invisible bookmark anchor
-            # so the PDF outline entry exists without any rendered text.
+            if h.get("_skip_outline"):
+                return ""
             label_text = f"{num}. {_e(h['text'])}" if num else _e(h["text"])
-            return f'<p class="toc-bookmark-anchor toc-bm-{level}">{label_text}</p>\n'
-        # Levels 0-1: number in bookmark only; content shows title without number.
-        # Level 2+: same pattern (already implemented).
-        if level < 2:
-            bm_label = f"{num}. {_e(h['text'])}" if num else _e(h["text"])
-            return (
-                f'<p class="toc-bookmark-anchor toc-bm-{level}">{bm_label}</p>\n'
-                f'<p class="toc-numbered-heading toc-nh-{level}">{_e(h["text"])}</p>\n'
-            )
+            return f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{label_text}</p>\n'
         bm_label = f"{num}. {_e(h['text'])}" if num else _e(h["text"])
         return (
-            f'<p class="toc-bookmark-anchor toc-bm-{level}">{bm_label}</p>\n'
-            f'<p class="toc-numbered-heading toc-nh-{level}">{_e(h["text"])}</p>\n'
+            f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{bm_label}</p>\n'
+            f'<p class="toc-numbered-heading toc-nh-{nh_level}">{_e(h["text"])}</p>\n'
         )
 
     def _strip_body_color(body_line: str) -> str:
@@ -3409,12 +3425,13 @@ def _render_page_html(
                     real_headings = [
                         h
                         for h in headings_here
-                        if not (
-                            h.get("implicit") or h.get("auto") or h.get("before_child")
-                        )
+                        if not (h.get("implicit") or h.get("before_child"))
                     ]
                     if real_headings:
-                        if all(not h.get("keep_line", True) for h in real_headings):
+                        if all(
+                            not h.get("keep_line", not h.get("auto", False))
+                            for h in real_headings
+                        ):
                             pass  # body IS the label → suppress
                         else:
                             body_line = _strip_body_color(line.strip())
