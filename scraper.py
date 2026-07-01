@@ -2198,10 +2198,23 @@ def _build_html_css(meta: dict) -> str:
         font-size: 18pt;
         color: {GOLD_L};
     }}
-    .toc-numbered-heading.toc-nh-1,
-    .toc-numbered-heading.toc-nh-implicit {{
+    .toc-numbered-heading.toc-nh-1 {{
         font-size: 17pt;
         color: {RUST};
+    }}
+    /* Implicit headings: TOC-derived, no matching text found in page content.
+       Rendered in muted italic with a dashed underline to distinguish them
+       visually from anchored headings. */
+    .toc-numbered-heading.toc-nh-implicit {{
+        font-size: 15pt;
+        font-style: italic;
+        font-weight: 600;
+        color: #8a7560;
+        border-bottom: 1.5px dashed #c8b99a;
+        padding-bottom: 0.15em;
+        margin-top: 0.6em;
+        margin-bottom: 0.1em;
+        opacity: 0.85;
     }}
     .toc-numbered-heading.toc-nh-2 {{
         font-size: 16pt;
@@ -2905,11 +2918,16 @@ def resolve_book_headings(meta: dict, pages_iter):
 
         page["resolved_headings"] = resolved
         page["echo_suppressed_positions"] = echo_suppressed  # render path uses this
-        page["unanchored_toc_entries"] = [
+        unanchored = [
             {"label": h["text"], "level": h["level"], "number": h["number"]}
             for h in resolved
             if h.get("implicit")
         ]
+        page["unanchored_toc_entries"] = unanchored
+
+        if unanchored:
+            titles = ", ".join(f'"{u["number"]}. {u["label"]}"' for u in unanchored)
+            print(f"  [implicit] page {pid}: {titles}")
 
         yield page
 
@@ -3294,15 +3312,17 @@ def _render_page_html(
         num = h.get("number", "")
         level = h["level"]
         if h.get("auto"):
-            nh_class = "auto"
             label_text = _e(h["text"])
+            return f'<p class="toc-numbered-heading toc-nh-auto">{label_text}</p>\n'
+        if h.get("implicit"):
+            label_text = f"{num}. {_e(h['text'])}" if num else _e(h["text"])
             return (
-                f'<p class="toc-numbered-heading toc-nh-{nh_class}">{label_text}</p>\n'
+                f'<p class="toc-numbered-heading toc-nh-implicit toc-bm-{level}">'
+                f"{label_text}</p>\n"
             )
         label_text = f"{num}. {_e(h['text'])}" if num and level < 3 else _e(h["text"])
-        nh_class = level
         return (
-            f'<p class="toc-numbered-heading toc-nh-{nh_class} toc-bm-{level}">'
+            f'<p class="toc-numbered-heading toc-nh-{level} toc-bm-{level}">'
             f"{label_text}</p>\n"
         )
 
