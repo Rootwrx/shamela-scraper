@@ -2210,11 +2210,13 @@ def _build_html_css(meta: dict) -> str:
         font-style: italic;
         font-weight: 600;
         color: #8a7560;
-        border-bottom: 1.5px dashed #c8b99a;
-        padding-bottom: 0.15em;
         margin-top: 0.6em;
         margin-bottom: 0.1em;
         opacity: 0.85;
+    }}
+    .toc-numbered-heading.toc-nh-implicit span.implicit-label {{
+        border-bottom: 1.5px dashed #c8b99a;
+        padding-bottom: 0.15em;
     }}
     .toc-numbered-heading.toc-nh-2 {{
         font-size: 16pt;
@@ -3315,12 +3317,16 @@ def _render_page_html(
             label_text = _e(h["text"])
             return f'<p class="toc-numbered-heading toc-nh-auto">{label_text}</p>\n'
         if h.get("implicit"):
-            label_text = f"{num}. {_e(h['text'])}" if num else _e(h["text"])
+            label_text = (
+                f"{num}. {_e(h['text'])}" if num and level < 2 else _e(h["text"])
+            )
             return (
                 f'<p class="toc-numbered-heading toc-nh-implicit toc-bm-{level}">'
-                f"{label_text}</p>\n"
+                f'<span class="implicit-label">{label_text}</span></p>\n'
             )
-        label_text = f"{num}. {_e(h['text'])}" if num and level < 3 else _e(h["text"])
+        # Show number in content only for top two levels (x  and  x.y).
+        # Deeper levels (x.y.z …) render title-only; bookmarks keep all levels.
+        label_text = f"{num}. {_e(h['text'])}" if num and level < 2 else _e(h["text"])
         return (
             f'<p class="toc-numbered-heading toc-nh-{level} toc-bm-{level}">'
             f"{label_text}</p>\n"
