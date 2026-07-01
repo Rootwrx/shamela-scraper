@@ -2202,22 +2202,9 @@ def _build_html_css(meta: dict) -> str:
         font-size: 17pt;
         color: {RUST};
     }}
-    /* Implicit headings: TOC-derived, no matching text found in page content.
-       Rendered in muted italic with a dashed underline to distinguish them
-       visually from anchored headings. */
-    .toc-numbered-heading.toc-nh-implicit {{
-        font-size: 15pt;
-        font-style: italic;
-        font-weight: 600;
-        color: #8a7560;
-        margin-top: 0.6em;
-        margin-bottom: 0.1em;
-        opacity: 0.85;
-    }}
-    .toc-numbered-heading.toc-nh-implicit span.implicit-label {{
-        border-bottom: 1.5px dashed #c8b99a;
-        padding-bottom: 0.15em;
-    }}
+    /* Implicit headings are not rendered in content.
+       They emit a .toc-bookmark-anchor so the PDF outline entry exists
+       without any visible text. No CSS needed here. */
     .toc-numbered-heading.toc-nh-2 {{
         font-size: 16pt;
         color: {TEAL};
@@ -3315,21 +3302,30 @@ def _render_page_html(
         level = h["level"]
         if h.get("auto"):
             label_text = _e(h["text"])
-            return f'<p class="toc-numbered-heading toc-nh-auto">{label_text}</p>\n'
-        if h.get("implicit"):
-            label_text = (
-                f"{num}. {_e(h['text'])}" if num and level < 2 else _e(h["text"])
-            )
+            bm_label = f"{num}. {label_text}" if num else label_text
             return (
-                f'<p class="toc-numbered-heading toc-nh-implicit toc-bm-{level}">'
-                f'<span class="implicit-label">{label_text}</span></p>\n'
+                f'<p class="toc-bookmark-anchor toc-bm-{level}">{bm_label}</p>\n'
+                f'<p class="toc-numbered-heading toc-nh-auto">{label_text}</p>\n'
             )
-        # Show number in content only for top two levels (x  and  x.y).
-        # Deeper levels (x.y.z …) render title-only; bookmarks keep all levels.
-        label_text = f"{num}. {_e(h['text'])}" if num and level < 2 else _e(h["text"])
+        if h.get("implicit"):
+            # Not visible in content — emit only an invisible bookmark anchor
+            # so the PDF outline entry exists without any rendered text.
+            label_text = f"{num}. {_e(h['text'])}" if num else _e(h["text"])
+            return f'<p class="toc-bookmark-anchor toc-bm-{level}">{label_text}</p>\n'
+        # Levels 0-1: number shown in content; same element carries the bookmark.
+        # Levels 2+:  content shows title only; a separate invisible anchor
+        #             carries the numbered label for the PDF outline so all
+        #             bookmark entries are consistently numbered.
+        if level < 2:
+            label_text = f"{num}. {_e(h['text'])}" if num else _e(h["text"])
+            return (
+                f'<p class="toc-numbered-heading toc-nh-{level} toc-bm-{level}">'
+                f"{label_text}</p>\n"
+            )
+        bm_label = f"{num}. {_e(h['text'])}" if num else _e(h["text"])
         return (
-            f'<p class="toc-numbered-heading toc-nh-{level} toc-bm-{level}">'
-            f"{label_text}</p>\n"
+            f'<p class="toc-bookmark-anchor toc-bm-{level}">{bm_label}</p>\n'
+            f'<p class="toc-numbered-heading toc-nh-{level}">{_e(h["text"])}</p>\n'
         )
 
     def _strip_body_color(body_line: str) -> str:
