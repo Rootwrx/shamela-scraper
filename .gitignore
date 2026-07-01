@@ -1,4 +1,5 @@
 shamela_output/
+.shamela_output/
 __pycache__/
 *html*
 HISTORY.md

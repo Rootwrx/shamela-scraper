@@ -2301,7 +2301,7 @@ def _plain_text(html_frag: str) -> str:
     return _html_mod.unescape(stripped)
 
 
-_BRACKET_STRIP_CHARS = "-[]（）().「」【】《》〈〉"
+_BRACKET_STRIP_CHARS = "-[]（）().「」【】《》〈〉«»‹›"
 _TASHKEEL_RE = re.compile(r"[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]")
 
 
@@ -2323,7 +2323,7 @@ def _normalize_ar(s: str) -> str:
     # Replace Arabic punctuation with space so labels that differ only by
     # commas, dashes, etc. still match (e.g. TOC "طيب في نفسه صاحب خير" vs
     # body "طيب في نفسه، صاحب خير").
-    s = re.sub(r"[،؟!\.\,\;\:\-\(\)\[\]\{\}]", " ", s)
+    s = re.sub(r"[،؟!\.\,\;\:\-\(\)\[\]\{\}«»‹›\"\'\u201c\u201d\u2018\u2019]", " ", s)
     s = s.strip(_BRACKET_STRIP_CHARS + " :،ـ")
     s = re.sub(r"\s+", " ", s).strip()
     # Strip leading Arabic-Indic / Latin digits followed by a separator
@@ -3312,15 +3312,13 @@ def _render_page_html(
             # so the PDF outline entry exists without any rendered text.
             label_text = f"{num}. {_e(h['text'])}" if num else _e(h["text"])
             return f'<p class="toc-bookmark-anchor toc-bm-{level}">{label_text}</p>\n'
-        # Levels 0-1: number shown in content; same element carries the bookmark.
-        # Levels 2+:  content shows title only; a separate invisible anchor
-        #             carries the numbered label for the PDF outline so all
-        #             bookmark entries are consistently numbered.
+        # Levels 0-1: number in bookmark only; content shows title without number.
+        # Level 2+: same pattern (already implemented).
         if level < 2:
-            label_text = f"{num}. {_e(h['text'])}" if num else _e(h["text"])
+            bm_label = f"{num}. {_e(h['text'])}" if num else _e(h["text"])
             return (
-                f'<p class="toc-numbered-heading toc-nh-{level} toc-bm-{level}">'
-                f"{label_text}</p>\n"
+                f'<p class="toc-bookmark-anchor toc-bm-{level}">{bm_label}</p>\n'
+                f'<p class="toc-numbered-heading toc-nh-{level}">{_e(h["text"])}</p>\n'
             )
         bm_label = f"{num}. {_e(h['text'])}" if num else _e(h["text"])
         return (
