@@ -2369,6 +2369,30 @@ def _bracket_stripped(line_html: str) -> str | None:
     return None
 
 
+def _strip_title_brackets(line_html: str, label: str) -> str:
+    """
+    Strips enclosing brackets from the title part of the line, 
+    preserving footnotes (whether inside or outside the brackets).
+    """
+    stripped = line_html.strip()
+    if not stripped.startswith("["):
+        return line_html
+        
+    # Case 1: Entire line is wrapped in brackets, e.g. [تمهيد (١)] or [تمهيد]
+    if stripped.endswith("]"):
+        return stripped[1:-1].strip()
+        
+    # Case 2: Title is wrapped in brackets but followed by footnote/text, e.g. [تمهيد] (١)
+    idx = stripped.find("]")
+    if idx != -1:
+        inside = stripped[1:idx]
+        if _normalize_ar(inside) == _normalize_ar(label):
+            return (inside + stripped[idx+1:]).strip()
+            
+    return line_html
+
+
+
 def _extract_bracket_headings(paras: list[dict] | None) -> list[dict]:
     found: list[dict] = []
     if not paras:
@@ -2649,8 +2673,12 @@ def _locate_toc_headings_in_page(
                 if raw_line:
                     keep_line = _has_extra_content(raw_line, norm_label)
                     plain_line = _plain_text(raw_line)
-                    has_fn = bool(re.search(r"\([\u0660-\u0669\d\s،,.\-\/أ-ي]+\)", plain_line) or 
-                                  re.search(r"\[[\u0660-\u0669\d\s،,.\-\/أ-ي]+\]", plain_line))
+                    is_bracket_heading = _bracket_stripped(raw_line) is not None
+                    if is_bracket_heading:
+                        has_fn = False
+                    else:
+                        has_fn = bool(re.search(r"\([\u0660-\u0669\d\s،,.\-\/أ-ي]+\)", plain_line) or 
+                                      re.search(r"\[[\u0660-\u0669\d\s،,.\-\/أ-ي]+\]", plain_line))
                 else:
                     has_fn = False
             else:
@@ -2679,7 +2707,7 @@ def _locate_toc_headings_in_page(
                     "toc_parent_uid": parent_number,
                 }
                 if raw_line and has_fn and not keep_line:
-                    h_obj["raw_line"] = raw_line
+                    h_obj["raw_line"] = _strip_title_brackets(raw_line, label)
                 _append_top(h_obj)
             else:
                 # Heading found mid-page (after prior body text or a prior
@@ -2701,7 +2729,7 @@ def _locate_toc_headings_in_page(
                     "toc_parent_uid": parent_number,
                 }
                 if raw_line and has_fn and not keep_line:
-                    h_obj["raw_line"] = raw_line
+                    h_obj["raw_line"] = _strip_title_brackets(raw_line, label)
                 resolved.append(h_obj)
             cursor = end
         else:
