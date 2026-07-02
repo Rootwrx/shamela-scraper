@@ -2330,6 +2330,14 @@ _TASHKEEL_RE = re.compile(r"[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]")
 def _normalize_ar(s: str) -> str:
     """Normalize Arabic for comparing page text against a TOC label."""
     s = _plain_text(s)
+    # Strip parenthesized/bracketed footnote markers (e.g. (١), [2], (أ)) to prevent them breaking matches
+    s = re.sub(r"\([\u0660-\u0669\d\s،,.\-\/أ-ي]+\)", "", s)
+    s = re.sub(r"\[[\u0660-\u0669\d\s،,.\-\/أ-ي]+\]", "", s)
+    # Strip leading bracket annotations like [٤٧/أ] that are followed by
+    # text (e.g. folio markers before a heading).  Bracket-only lines
+    # like [الفصل الثالث] are untouched — they are stripped earlier by
+    # _bracket_stripped before reaching this function.
+    s = re.sub(r"^\[[^\]]*\]\s+", "", s)
     # Normalise common Arabic letter variants: alif forms → bare alif,
     # alif maqsura → yaa, taa marbouta → haa, hamza-on-waw → waw,
     # hamza-on-ya → yaa.  This catches OCR / spelling mismatches
@@ -2345,7 +2353,7 @@ def _normalize_ar(s: str) -> str:
     # Replace Arabic punctuation with space so labels that differ only by
     # commas, dashes, etc. still match (e.g. TOC "طيب في نفسه صاحب خير" vs
     # body "طيب في نفسه، صاحب خير").
-    s = re.sub(r"[،؟!\.\,\;\:\-\(\)\[\]\{\}«»‹›\"\'\u201c\u201d\u2018\u2019]", " ", s)
+    s = re.sub(r"[،؟!\.\,\;\:\-\(\)\[\]\{\}«»‹›\/\"\'\u201c\u201d\u2018\u2019]", " ", s)
     s = s.strip(_BRACKET_STRIP_CHARS + " :،ـ")
     s = re.sub(r"\s+", " ", s).strip()
     # Strip leading Arabic-Indic / Latin digits followed by a separator
@@ -2394,6 +2402,20 @@ def _has_extra_content(line_html: str, norm_label: str) -> bool:
     on lines like "[عنوان]" where the brackets are the only "extra" content.
     """
     plain = _plain_text(line_html).strip()
+    
+    # Strip footnote markers to see if there is other text
+    plain_no_fn = re.sub(r"\([\u0660-\u0669\d\s،,.\-\/أ-ي]+\)", "", plain)
+    plain_no_fn = re.sub(r"\[[\u0660-\u0669\d\s،,.\-\/أ-ي]+\]", "", plain_no_fn)
+    
+    # Normalize both
+    plain_norm = _normalize_ar(plain_no_fn)
+    label_norm = _normalize_ar(norm_label)
+    
+    # If the text after stripping footnotes matches the normalized TOC label,
+    # then there is no *other* extra content. We can merge the footnote into the heading.
+    if plain_norm == label_norm:
+        return False
+
     # Align with _normalize_ar: replace punctuation (except parentheses,
     # which would break footnote detection like (١)) with spaces.
     plain = re.sub(r"[،؟!\.\,\;\:\-]", " ", plain)
@@ -2445,6 +2467,20 @@ def _find_label_in_lines(
             and not line_norm[len(norm_label)].isalnum()
         ):
             return (start, start + 1), True
+
+    # Fallback: label starts with the body line (e.g. TOC
+    # "مهمة: توجيه..." vs body "مهمة").  The label has more
+    # content after a separator that was normalised to space.
+    for start in range(cursor, len(flat_lines)):
+        line_norm = flat_lines[start][2]
+        if (
+            len(norm_label) >= 4
+            and len(line_norm) >= 3
+            and len(line_norm) < len(norm_label)
+            and norm_label.startswith(line_norm)
+            and norm_label[len(line_norm)] == " "
+        ):
+            return (start, start + 1), False
 
     return None, False
 
@@ -2612,6 +2648,15 @@ def _locate_toc_headings_in_page(
                 )
                 if raw_line:
                     keep_line = _has_extra_content(raw_line, norm_label)
+                    plain_line = _plain_text(raw_line)
+                    has_fn = bool(re.search(r"\([\u0660-\u0669\d\s،,.\-\/أ-ي]+\)", plain_line) or 
+                                  re.search(r"\[[\u0660-\u0669\d\s،,.\-\/أ-ي]+\]", plain_line))
+                else:
+                    has_fn = False
+            else:
+                raw_line = ""
+                has_fn = False
+
             # Only hoist to page-top when the heading is literally the first
             # content on the page (start == cursor == 0).
             # "start > cursor and cursor == 0" must NOT hoist: body text before
@@ -2620,42 +2665,44 @@ def _locate_toc_headings_in_page(
             # section's content in the PDF.
             if start == 0 and cursor == 0:
                 _flush_pending_as_top()
-                _append_top(
-                    {
-                        "text": label,
-                        "level": level,
-                        "number": number,
-                        "matched": True,
-                        "auto": False,
-                        "implicit": False,
-                        "keep_line": keep_line,
-                        "suppress": [],
-                        "toc_parent_text": parent_text,
-                        "_uid": number,
-                        "toc_parent_uid": parent_number,
-                    }
-                )
+                h_obj = {
+                    "text": label,
+                    "level": level,
+                    "number": number,
+                    "matched": True,
+                    "auto": False,
+                    "implicit": False,
+                    "keep_line": keep_line,
+                    "suppress": [list(p) for p in positions],
+                    "toc_parent_text": parent_text,
+                    "_uid": number,
+                    "toc_parent_uid": parent_number,
+                }
+                if raw_line and has_fn and not keep_line:
+                    h_obj["raw_line"] = raw_line
+                _append_top(h_obj)
             else:
                 # Heading found mid-page (after prior body text or a prior
                 # heading).  Keep inline so content flows between sections.
                 _flush_pending_before_child(positions)
-                resolved.append(
-                    {
-                        "positions": positions,
-                        "text": label,
-                        "level": level,
-                        "number": number,
-                        "matched": True,
-                        "auto": False,
-                        "implicit": False,
-                        "keep_line": keep_line,
-                        "suppress": [],
-                        "at_page_top": False,
-                        "toc_parent_text": parent_text,
-                        "_uid": number,
-                        "toc_parent_uid": parent_number,
-                    }
-                )
+                h_obj = {
+                    "positions": positions,
+                    "text": label,
+                    "level": level,
+                    "number": number,
+                    "matched": True,
+                    "auto": False,
+                    "implicit": False,
+                    "keep_line": keep_line,
+                    "suppress": [],
+                    "at_page_top": False,
+                    "toc_parent_text": parent_text,
+                    "_uid": number,
+                    "toc_parent_uid": parent_number,
+                }
+                if raw_line and has_fn and not keep_line:
+                    h_obj["raw_line"] = raw_line
+                resolved.append(h_obj)
             cursor = end
         else:
             pending.append((label, level, number, parent_text, parent_number))
@@ -3288,9 +3335,11 @@ def _render_page_html(
 
     page_start_headings: list[dict] = []
     for h in resolved_headings:
-        for pos in h.get("suppress", []):
-            suppressed_positions.add(tuple(pos))
         pi, li = h["positions"][0]
+        for pos in h.get("suppress", []):
+            if h.get("at_page_top") and h.get("keep_line") and tuple(pos) == (pi, li):
+                continue
+            suppressed_positions.add(tuple(pos))
         if h.get("at_page_top"):
             page_start_headings.append(h)
         else:
@@ -3336,10 +3385,17 @@ def _render_page_html(
                 return ""
             label_text = f"{num}. {_e(h['text'])}" if num else _e(h["text"])
             return f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{label_text}</p>\n'
+        
+        # Use raw_line (containing footnote/spans) if available
+        if h.get("raw_line"):
+            label_html = h['raw_line']
+        else:
+            label_html = _e(h["text"])
+            
         bm_label = f"{num}. {_e(h['text'])}" if num else _e(h["text"])
         return (
             f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{bm_label}</p>\n'
-            f'<p class="toc-numbered-heading toc-nh-{nh_level}">{_e(h["text"])}</p>\n'
+            f'<p class="toc-numbered-heading toc-nh-{nh_level}">{label_html}</p>\n'
         )
 
     def _strip_body_color(body_line: str) -> str:
@@ -3989,6 +4045,18 @@ def _build_book_outputs(
             vol_pages, vol_labels = _merge_intro_volumes(vol_pages, vol_labels)
             meta["volume_start_pages"] = vol_pages
             meta["volume_labels"] = vol_labels
+        # Validate --juz if given
+        juz_arg = getattr(args, "juz", None)
+        if juz_arg is not None:
+            n_avail = len(vol_pages) if vol_pages else 0
+            if n_avail < 2:
+                print(
+                    f"  [!] --juz {juz_arg} ignored: book has no volumes"
+                )
+            elif juz_arg < 1 or juz_arg > n_avail:
+                print(
+                    f"  [!] --juz {juz_arg} out of range (1–{n_avail}), ignoring"
+                )
         has_volumes = (
             vol_pages
             and vol_labels
@@ -3998,6 +4066,8 @@ def _build_book_outputs(
         if has_volumes:
             n_vols = len(vol_pages)
             for vi in range(n_vols):
+                if juz_arg is not None and vi + 1 != juz_arg:
+                    continue
                 label = vol_labels[vi]
                 lo = vol_pages[vi]
                 hi = vol_pages[vi + 1] - 1 if vi + 1 < n_vols else "end"
@@ -4201,6 +4271,12 @@ def main():
         "--no_juz_outline",
         action="store_true",
         help="With --single_pdf: build combined PDF without juz numbering in headings (old-style)",
+    )
+    parser.add_argument(
+        "--juz",
+        type=int,
+        default=None,
+        help="Generate PDF for a specific juz/volume only (1-based index)",
     )
     parser.add_argument(
         "--force",
