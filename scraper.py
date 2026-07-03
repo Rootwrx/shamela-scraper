@@ -2108,18 +2108,18 @@ def _build_html_css(meta: dict, columns: int = 1, fast: bool = False) -> str:
         margin: 1cm 1.1cm 1.3cm 1.1cm;
         background: {CREAM};
 
-        @top-left {{ content: none; }}
-
-        @top-center {{ content: none; }}
-
-        @top-right {{
+        @top-left {{
             content: counter(page);
             font-family: {font_body};
             font-size: 14pt;
             font-weight: 700;
             color: {RUST};
-            padding-right: 0.5em;
+            padding-left: 0.5em;
         }}
+
+        @top-center {{ content: none; }}
+
+        @top-right {{ content: none; }}
 
         @bottom-center {{
             content: "— " counter(page) " —";
@@ -4525,7 +4525,7 @@ def _docx_add_page_number_footer(doc) -> None:
 
 
 def _docx_add_page_number_header(doc) -> None:
-    """Small page-number field in the top-left corner of every page,
+    """Small page-number field in the top-right corner of every page,
     in addition to the centered one in the footer."""
     section = doc.sections[0]
     header = section.header
