@@ -2431,7 +2431,7 @@ def _plain_text(html_frag: str) -> str:
     return _html_mod.unescape(stripped)
 
 
-_BRACKET_STRIP_CHARS = "-[]（）().「」【】《》〈〉«»‹›"
+_BRACKET_STRIP_CHARS = "-[]（）.「」【】《》〈〉«»‹›"
 _TASHKEEL_RE = re.compile(r"[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]")
 
 
@@ -2439,8 +2439,16 @@ def _normalize_ar(s: str) -> str:
     """Normalize Arabic for comparing page text against a TOC label."""
     s = _plain_text(s)
     # Strip parenthesized/bracketed footnote markers (e.g. (١), [2], (أ)) to prevent them breaking matches
-    s = re.sub(r"\([\u0660-\u0669\d\s،,.\-\/أ-ي]+\)", "", s)
-    s = re.sub(r"\[[\u0660-\u0669\d\s،,.\-\/أ-ي]+\]", "", s)
+    # Strip parenthesized footnote markers like (١) or (٢، ٣) (must contain a digit).
+    # Does NOT strip content like (حرف الباء) (no digits).
+    s = re.sub(r"\([\u0660-\u0669\d\s،,.\-\/أ-ي]*[\u0660-\u0669\d][\u0660-\u0669\d\s،,.\-\/أ-ي]*\)", "", s)
+    # Strip single-letter markers like (أ) (no digit, just one letter)
+    s = re.sub(r"\([\u0621-\u064A]\)", "", s)
+    # Strip bracketed footnote/folio markers like [١] or [٤٧/أ] (must contain a digit).
+    # Does NOT strip bracket headings like [التخامة في القبلة وفي الصلاة] (no digits).
+    s = re.sub(r"\[[\u0660-\u0669\d\s،,.\-\/أ-ي]*[\u0660-\u0669\d][\u0660-\u0669\d\s،,.\-\/أ-ي]*\]", "", s)
+    # Strip single-letter markers like [أ] (no digit, just one letter)
+    s = re.sub(r"\[[\u0621-\u064A]\]", "", s)
     # Strip leading bracket annotations like [٤٧/أ] that are followed by
     # text (e.g. folio markers before a heading).  Bracket-only lines
     # like [الفصل الثالث] are untouched — they are stripped earlier by
@@ -2472,8 +2480,9 @@ def _normalize_ar(s: str) -> str:
 
 def _bracket_stripped(line_html: str) -> str | None:
     plain = _plain_text(line_html).strip()
-    if plain.startswith("[") and plain.endswith("]"):
-        return plain.strip(_BRACKET_STRIP_CHARS).strip()
+    m = re.match(r"^\[(.+)\]$", plain)
+    if m:
+        return m.group(1).strip(_BRACKET_STRIP_CHARS).strip()
     return None
 
 
@@ -2508,7 +2517,10 @@ def _extract_bracket_headings(paras: list[dict] | None) -> list[dict]:
     for pi, para in enumerate(paras):
         if para.get("type") == "hamesh":
             continue
-        for li, line in enumerate(para.get("lines", [])):
+        lines = para.get("lines", [])
+        li = 0
+        while li < len(lines):
+            line = lines[li]
             stripped = _bracket_stripped(line)
             if stripped:
                 found.append(
@@ -2519,6 +2531,31 @@ def _extract_bracket_headings(paras: list[dict] | None) -> list[dict]:
                         "text": stripped,
                     }
                 )
+                li += 1
+                continue
+            plain = _plain_text(line).strip()
+            if plain.startswith("[") and "]" not in plain:
+                joined_html = line
+                joined_li = li
+                li += 1
+                while li < len(lines):
+                    next_plain = _plain_text(lines[li]).strip()
+                    joined_html += "<br>" + lines[li]
+                    li += 1
+                    if "]" in next_plain:
+                        break
+                stripped = _bracket_stripped(joined_html)
+                if stripped:
+                    found.append(
+                        {
+                            "para_idx": pi,
+                            "line_idx": joined_li,
+                            "ptype": para.get("type"),
+                            "text": stripped,
+                        }
+                    )
+                continue
+            li += 1
     return found
 
 
@@ -3505,12 +3542,21 @@ def _render_page_html(
     # implicit/auto/before_child → artificial placement; text differs
     #   from the body at that position → body shows as-is.
 
+    def _heading_display_text(text: str) -> str:
+        """Strip outer brackets from heading text for clean display,
+        e.g. ``[التخامة في القبلة وفي الصلاة]`` → ``التخامة في القبلة وفي الصلاة``."""
+        t = text.strip()
+        if t.startswith("[") and t.endswith("]"):
+            return t[1:-1].strip()
+        return t
+
     def _heading_html(h: dict) -> str:
         num = h.get("number", "")
         level = h["level"]
         nh_level = h.get("_nh_level", level)
+        display = _heading_display_text(h["text"])
         if h.get("auto"):
-            label_text = _e(h["text"])
+            label_text = _e(display)
             bm_label = f"{num}. {label_text}" if num else label_text
             return (
                 f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{bm_label}</p>\n'
@@ -3519,16 +3565,16 @@ def _render_page_html(
         if h.get("implicit"):
             if h.get("_skip_outline"):
                 return ""
-            label_text = f"{num}. {_e(h['text'])}" if num else _e(h["text"])
+            label_text = f"{num}. {_e(display)}" if num else _e(display)
             return f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{label_text}</p>\n'
         
         # Use raw_line (containing footnote/spans) if available
         if h.get("raw_line"):
             label_html = h['raw_line']
         else:
-            label_html = _e(h["text"])
+            label_html = _e(display)
             
-        bm_label = f"{num}. {_e(h['text'])}" if num else _e(h["text"])
+        bm_label = f"{num}. {_e(display)}" if num else _e(display)
         return (
             f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{bm_label}</p>\n'
             f'<p class="toc-numbered-heading toc-nh-{nh_level}">{label_html}</p>\n'
