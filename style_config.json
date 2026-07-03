@@ -1,0 +1,43 @@
+{
+  "fonts": {
+    "heading": "Scheherazade New",
+    "body": "Scheherazade New"
+  },
+  "body_size_pdf": 14,
+  "body_size_docx": 15,
+  "palette": {
+    "gold": "#c99200",
+    "gold_light": "#e8b830",
+    "gold_dark": "#6b4f10",
+    "teal": "#256080",
+    "rust": "#b8451a",
+    "sepia": "#805830",
+    "ink": "#1a1008",
+    "cream": "#fefcf7",
+    "parchment": "#fcf8ef",
+    "brown": "#3e2712"
+  },
+  "shamela_span_colors": {
+    "c1": "#cc3333",
+    "c2": "#1a7a1a",
+    "c3": "#8a8a20",
+    "c4": "#909090",
+    "c5": "#1a7aa0"
+  },
+  "heading_levels": [
+    {"level": 0, "size_pdf": 18, "size_docx": 19, "color": "#e8b830", "shape": "۞"},
+    {"level": 1, "size_pdf": 17, "size_docx": 18, "color": "#b8451a", "shape": "❖"},
+    {"level": 2, "size_pdf": 17, "size_docx": 17, "color": "#256080", "shape": "◈"},
+    {"level": 3, "size_pdf": 17, "size_docx": 16, "color": "#805830", "shape": "◆"},
+    {"level": 4, "size_pdf": 17, "size_docx": 16, "color": "#2d7a4f", "shape": "●"},
+    {"level": 5, "size_pdf": 17, "size_docx": 16, "color": "#7b2d8e", "shape": "★"},
+    {"level": 6, "size_pdf": 17, "size_docx": 16, "color": "#c07a1a", "shape": "✦"},
+    {"level": 7, "size_pdf": 17, "size_docx": 16, "color": "#c0392b", "shape": "◇"},
+    {"level": 8, "size_pdf": 17, "size_docx": 16, "color": "#1e7a9e", "shape": "◎"},
+    {"level": 9, "size_pdf": 17, "size_docx": 16, "color": "#c06080", "shape": "▪"}
+  ],
+  "delimiter_colors": {
+    "brace": "#FF0000",
+    "verse": "#FF0000"
+  }
+}

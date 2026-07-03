@@ -132,6 +132,99 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 from curl_cffi import requests
 
+# ── Style configuration ────────────────────────────────────────────────
+# Loaded from style_config.json (or custom path via --style_config).
+# This global is populated once at startup; all PDF/DOCX styling reads
+# from it.  Any missing key falls back to the DEFAULT_STYLE_CFG below.
+STYLE_CFG: dict = {}
+
+DEFAULT_STYLE_CFG = {
+    "fonts": {"heading": "Scheherazade New", "body": "Scheherazade New"},
+    "body_size_pdf": 14,
+    "body_size_docx": 15,
+    "palette": {
+        "gold": "#c99200",
+        "gold_light": "#e8b830",
+        "gold_dark": "#6b4f10",
+        "teal": "#256080",
+        "rust": "#b8451a",
+        "sepia": "#805830",
+        "ink": "#1a1008",
+        "cream": "#fefcf7",
+        "parchment": "#fcf8ef",
+        "brown": "#3e2712",
+    },
+    "shamela_span_colors": {
+        "c1": "#cc3333",
+        "c2": "#1a7a1a",
+        "c3": "#8a8a20",
+        "c4": "#909090",
+        "c5": "#1a7aa0",
+    },
+    "heading_levels": [
+        {"level": 0, "size_pdf": 18, "size_docx": 19, "color": "#e8b830", "shape": "۞"},
+        {"level": 1, "size_pdf": 17, "size_docx": 18, "color": "#b8451a", "shape": "❖"},
+        {"level": 2, "size_pdf": 17, "size_docx": 17, "color": "#256080", "shape": "◈"},
+        {"level": 3, "size_pdf": 17, "size_docx": 16, "color": "#805830", "shape": "◆"},
+        {"level": 4, "size_pdf": 17, "size_docx": 16, "color": "#2d7a4f", "shape": "●"},
+        {"level": 5, "size_pdf": 17, "size_docx": 16, "color": "#7b2d8e", "shape": "★"},
+        {"level": 6, "size_pdf": 17, "size_docx": 16, "color": "#c07a1a", "shape": "✦"},
+        {"level": 7, "size_pdf": 17, "size_docx": 16, "color": "#c0392b", "shape": "◇"},
+        {"level": 8, "size_pdf": 17, "size_docx": 16, "color": "#1e7a9e", "shape": "◎"},
+        {"level": 9, "size_pdf": 17, "size_docx": 16, "color": "#c06080", "shape": "▪"},
+    ],
+    "delimiter_colors": {
+        "brace": "#FF0000",
+        "verse": "#FF0000",
+    },
+}
+
+
+def load_style_config(path: str | None = None) -> dict:
+    """Load style_config.json, merge with defaults, store in STYLE_CFG."""
+    cfg = dict(DEFAULT_STYLE_CFG)
+    if path and Path(path).exists():
+        with open(path, encoding="utf-8") as f:
+            user = json.load(f)
+        _deep_merge(cfg, user)
+    STYLE_CFG.clear()
+    STYLE_CFG.update(cfg)
+
+    # ── Sync module-level globals from config ────────────────────────
+    global _DOCX_FONT_BODY, _DOCX_FONT_HEAD
+    global _DOCX_GOLD, _DOCX_GOLD_L, _DOCX_GOLD_D, _DOCX_TEAL, _DOCX_RUST, _DOCX_SEPIA, _DOCX_INK
+    global _DOCX_LEVEL_COLORS, _HEADING_SHAPES
+
+    pal = cfg["palette"]
+    _DOCX_GOLD = pal["gold"].lstrip("#").upper()
+    _DOCX_GOLD_L = pal["gold_light"].lstrip("#").upper()
+    _DOCX_GOLD_D = pal["gold_dark"].lstrip("#").upper()
+    _DOCX_TEAL = pal["teal"].lstrip("#").upper()
+    _DOCX_RUST = pal["rust"].lstrip("#").upper()
+    _DOCX_SEPIA = pal["sepia"].lstrip("#").upper()
+    _DOCX_INK = pal["ink"].lstrip("#").upper()
+
+    fonts = cfg["fonts"]
+    _DOCX_FONT_BODY = fonts["body"]
+    _DOCX_FONT_HEAD = fonts["heading"]
+
+    _HEADING_SHAPES = {hl["level"]: hl["shape"] for hl in cfg["heading_levels"]}
+    _DOCX_LEVEL_COLORS = {
+        hl["level"]: (hl["color"].lstrip("#").upper(), hl["size_docx"])
+        for hl in cfg["heading_levels"]
+    }
+
+    return cfg
+
+
+def _deep_merge(base: dict, overlay: dict) -> None:
+    """Recursive dict merge — overlay values win at every level."""
+    for k, v in overlay.items():
+        if k in base and isinstance(base[k], dict) and isinstance(v, dict):
+            _deep_merge(base[k], v)
+        else:
+            base[k] = v
+
 try:
     from weasyprint import HTML as WeasyprintHTML
 except ImportError:  # pdf building simply unavailable until installed
@@ -912,13 +1005,7 @@ def _clean_inline(p_soup) -> str:
     span.cX (colored text) and <br>.
     Everything else is unwrapped to plain text.
     """
-    COLORS = {
-        "c1": "#cc3333",
-        "c2": "#1a7a1a",
-        "c3": "#8a8a20",
-        "c4": "#909090",
-        "c5": "#1a7aa0",
-    }
+    COLORS = STYLE_CFG.get("shamela_span_colors", DEFAULT_STYLE_CFG["shamela_span_colors"])
 
     out = []
     for node in p_soup.children:
@@ -1907,6 +1994,22 @@ def _e(text: str) -> str:
     return _html.escape(str(text)) if text else ""
 
 
+def _build_heading_level_css() -> str:
+    """Generate CSS for .toc-nh-{0..9} from STYLE_CFG heading_levels."""
+    parts = []
+    for hl in STYLE_CFG.get("heading_levels", DEFAULT_STYLE_CFG["heading_levels"]):
+        lvl = hl["level"]
+        sz = hl["size_pdf"]
+        col = hl["color"]
+        parts.append(
+            f"    .toc-numbered-heading.toc-nh-{lvl} {{\n"
+            f"        font-size: {sz}pt;\n"
+            f"        color: {col};\n"
+            f"    }}"
+        )
+    return "\n".join(parts)
+
+
 def _truncate(title: str, max_words: int = 5) -> str:
     """Truncate a title to max_words; if longer keeps first few + '...' + last word."""
     words = title.split()
@@ -1930,8 +2033,8 @@ def _build_html_css(meta: dict, columns: int = 1, fast: bool = False) -> str:
     """
     import datetime as _dt  # noqa: F401 — kept for callers that need it
 
-    font_body = '"Scheherazade New", "Noto Naskh Arabic", "Amiri Quran", "Amiri", serif'
-    font_head = '"Scheherazade New", "Noto Naskh Arabic", "Amiri Quran", "Amiri", serif'
+    font_body = f'"{STYLE_CFG["fonts"]["body"]}", "Noto Naskh Arabic", "Amiri Quran", "Amiri", serif'
+    font_head = f'"{STYLE_CFG["fonts"]["heading"]}", "Noto Naskh Arabic", "Amiri Quran", "Amiri", serif'
 
     toc_flat = meta.get("toc_flat", [])
     max_toc_level = -1
@@ -1950,16 +2053,17 @@ def _build_html_css(meta: dict, columns: int = 1, fast: bool = False) -> str:
     toc_bm_css = "\n    ".join(toc_bm_css_parts)
 
     # Islamic gold palette
-    GOLD = "#c99200"
-    GOLD_L = "#e8b830"
-    GOLD_D = "#6b4f10"
-    TEAL = "#256080"
-    RUST = "#b8451a"
-    INK = "#1a1008"
-    CREAM = "#fefcf7"
-    PARCHMENT = "#fcf8ef"
-    SEPIA = "#805830"
-    BROWN = "#3e2712"
+    pal = STYLE_CFG["palette"]
+    GOLD = pal["gold"]
+    GOLD_L = pal["gold_light"]
+    GOLD_D = pal["gold_dark"]
+    TEAL = pal["teal"]
+    RUST = pal["rust"]
+    INK = pal["ink"]
+    CREAM = pal["cream"]
+    PARCHMENT = pal["parchment"]
+    SEPIA = pal["sepia"]
+    BROWN = pal["brown"]
 
     # kashida (Arabic letter-stretch justification) looks great but is a
     # major WeasyPrint performance sink — it runs a custom per-line glyph
@@ -2042,7 +2146,7 @@ def _build_html_css(meta: dict, columns: int = 1, fast: bool = False) -> str:
 
     body {{
         font-family: {font_body};
-        font-size: 14pt;
+        font-size: {STYLE_CFG["body_size_pdf"]}pt;
         font-weight: 700;
         line-height: 1.9;
         direction: rtl;
@@ -2316,52 +2420,17 @@ def _build_html_css(meta: dict, columns: int = 1, fast: bool = False) -> str:
         bookmark-level: none;
         prince-bookmark-level: none;
     }}
-    .toc-numbered-heading.toc-nh-0 {{
-        font-size: 18pt;
-        color: {GOLD_L};
-    }}
-    .toc-numbered-heading.toc-nh-1 {{
-        font-size: 17pt;
-        color: {RUST};
-    }}
-    /* Implicit headings are not rendered in content.
-       They emit a .toc-bookmark-anchor so the PDF outline entry exists
-       without any visible text. No CSS needed here. */
-    .toc-numbered-heading.toc-nh-2 {{
-        font-size: 17pt;
-        color: {TEAL};
-    }}
-    .toc-numbered-heading.toc-nh-3 {{
-        font-size: 17pt;
-        color: {SEPIA};
-    }}
-    .toc-numbered-heading.toc-nh-4 {{
-        font-size: 17pt;
-        color: #2d7a4f;
-    }}
-    .toc-numbered-heading.toc-nh-5 {{
-        font-size: 17pt;
-        color: #7b2d8e;
-    }}
-    .toc-numbered-heading.toc-nh-6 {{
-        font-size: 17pt;
-        color: #c07a1a;
-    }}
-    .toc-numbered-heading.toc-nh-7 {{
-        font-size: 17pt;
-        color: #c0392b;
-    }}
-    .toc-numbered-heading.toc-nh-8 {{
-        font-size: 17pt;
-        color: #1e7a9e;
-    }}
-    .toc-numbered-heading.toc-nh-9 {{
-        font-size: 17pt;
-        color: #c06080;
-    }}
+    /* Per-level heading colors + sizes from style config */
+    {_build_heading_level_css()}
     /* Auto-detected bracket headings — italic */
     .toc-numbered-heading.toc-nh-auto {{
         font-style: italic;
+    }}
+    /* Level shape marker */
+    .heading-shape {{
+        font-size: 0.7em;
+        margin-inline-end: 0.3em;
+        user-select: none;
     }}
 
 
@@ -3536,12 +3605,14 @@ def _render_page_html(
         level = h["level"]
         nh_level = h.get("_nh_level", level)
         display = _heading_display_text(h["text"])
+        shape = _HEADING_SHAPES.get(nh_level, "")
+        shape_prefix = f'<span class="heading-shape">{shape}</span> ' if shape else ""
         if h.get("auto"):
             label_text = _e(display)
             bm_label = f"{num}. {label_text}" if num else label_text
             return (
                 f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{bm_label}</p>\n'
-                f'<p class="toc-numbered-heading toc-nh-{nh_level}">{label_text}</p>\n'
+                f'<p class="toc-numbered-heading toc-nh-{nh_level}">{shape_prefix}{label_text}</p>\n'
             )
         if h.get("implicit"):
             if h.get("_skip_outline"):
@@ -3558,20 +3629,22 @@ def _render_page_html(
         bm_label = f"{num}. {_e(display)}" if num else _e(display)
         return (
             f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{bm_label}</p>\n'
-            f'<p class="toc-numbered-heading toc-nh-{nh_level}">{label_html}</p>\n'
+            f'<p class="toc-numbered-heading toc-nh-{nh_level}">{shape_prefix}{label_html}</p>\n'
         )
 
     def _color_delimited_text(text: str) -> str:
-        """Wrap text between `{` and `}` or `﴾` and `﴿` in red bold span.
-        Unmatched delimiters are left as-is."""
+        """Wrap text between `{` and `}` or `﴾` and `﴿` in colored span."""
+        dcol = STYLE_CFG.get("delimiter_colors", DEFAULT_STYLE_CFG["delimiter_colors"])
+        brace_col = dcol.get("brace", "#FF0000")
+        verse_col = dcol.get("verse", "#FF0000")
         text = re.sub(
             r"(\{[^}]*\})",
-            r'<span style="color:#FF0000">\1</span>',
+            f'<span style="color:{brace_col}">\\1</span>',
             text,
         )
         text = re.sub(
             r"(\uFD3E[^\uFD3E\uFD3F]*\uFD3F|\uFD3F[^\uFD3E\uFD3F]*\uFD3E)",
-            r'<span style="color:#FF0000">\1</span>',
+            f'<span style="color:{verse_col}">\\1</span>',
             text,
         )
         return text
@@ -4021,6 +4094,19 @@ _DOCX_RUST = "B8451A"
 _DOCX_SEPIA = "805830"
 _DOCX_INK = "1A1008"
 
+_HEADING_SHAPES = {
+    0: "۞",
+    1: "❖",
+    2: "◈",
+    3: "◆",
+    4: "●",
+    5: "★",
+    6: "✦",
+    7: "◇",
+    8: "◎",
+    9: "▪",
+}
+
 _DOCX_LEVEL_COLORS = {
     0: (_DOCX_GOLD_L, 19),
     1: (_DOCX_RUST, 18),
@@ -4173,7 +4259,8 @@ def _docx_add_body_paragraph(doc, p_tag, *, style_name: str = "Shamela Body") ->
     para = doc.add_paragraph(style=style_name)
     para.alignment = WD_ALIGN_PARAGRAPH.LEFT
     _docx_set_bidi(para)
-    _docx_add_inline_html(para, p_tag, font_name=_DOCX_FONT_BODY, size=15, bold=True)
+    bsz = STYLE_CFG.get("body_size_docx", DEFAULT_STYLE_CFG["body_size_docx"])
+    _docx_add_inline_html(para, p_tag, font_name=_DOCX_FONT_BODY, size=bsz, bold=True)
 
 
 def _docx_add_chapter_heading(doc, p_tag) -> None:
@@ -4206,6 +4293,9 @@ def _docx_add_visible_heading(doc, text: str, level_num: int) -> None:
     _docx_set_bidi(para)
     para.paragraph_format.space_before = Pt(8)
     para.paragraph_format.space_after = Pt(4)
+    shape = _HEADING_SHAPES.get(level_num, "")
+    if shape:
+        _docx_add_run(para, shape + " ", font_name=_DOCX_FONT_HEAD, size=max(11, size - 4), bold=True, color_hex=color)
     _docx_add_run(para, text, font_name=_DOCX_FONT_HEAD, size=size, bold=True, color_hex=color)
 
 
@@ -4370,7 +4460,7 @@ def _docx_setup_styles(doc) -> None:
 
     normal = doc.styles["Normal"]
     normal.font.name = _DOCX_FONT_BODY
-    normal.font.size = Pt(15)
+    normal.font.size = Pt(STYLE_CFG.get("body_size_docx", DEFAULT_STYLE_CFG["body_size_docx"]))
     normal.font.bold = True
     rpr = normal.element.get_or_add_rPr()
     rFonts = rpr.get_or_add_rFonts()
@@ -5269,7 +5359,24 @@ def main():
         "WeasyPrint speed sink — this can cut PDF build time drastically "
         "on large books, at the cost of plain justify instead of kashida.",
     )
+    parser.add_argument(
+        "--style_config",
+        type=str,
+        default=None,
+        help="Path to style_config.json. If not set, looks for "
+        "style_config.json in the current directory, then falls back to "
+        "built-in defaults.",
+    )
     args = parser.parse_args()
+
+    # ── Load style configuration ─────────────────────────────────────
+    style_path = args.style_config
+    if not style_path:
+        local_cfg = Path("style_config.json")
+        if local_cfg.exists():
+            style_path = str(local_cfg)
+    load_style_config(style_path)
+    print(f"[*] Style config loaded{' from ' + style_path if style_path else ' (defaults)'}")
 
     if args.also_pdf and not args.docx:
         print("[!] --also_pdf has no effect without --docx (a PDF is always "

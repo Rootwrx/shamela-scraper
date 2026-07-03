@@ -268,6 +268,7 @@ python scraper.py --book_ids 12762,667 --workers 16 --delay 0.3
 | `--status` | `False` | Print manifest status and exit without scraping |
 | `--columns` | `1` | Number of text columns per PDF page (`1` or `2`) |
 | `--fast` | `False` | Drop kashida justification for faster PDF rendering |
+| `--style_config` | — | Path to `style_config.json` (falls back to project root, then built-in defaults) |
 | `--flush_every` | `50` | HTML buffer flush interval for PDF generation |
 
 ## Output structure
@@ -340,6 +341,76 @@ Two approaches:
 **2. Edit the source HTML + rebuild** — Find the corresponding Shamela page file in the book directory, insert a heading tag like `<h3>4.3. دلالة الألفاظ على أنفسها</h3>` at the correct position, then re-run with `--docx --pdf_only` to regenerate from your edits.
 
 Both methods require human judgment — `implicits.json` only tells you *what* is missing and *on which page*, not *where on that page*. The insertion point could be inside a paragraph, after a specific word, etc., so the script never auto-injects.
+
+## Style configuration
+
+All visual styles — fonts, colors, heading sizes, shapes, and more — come from `style_config.json` in the project root. You can edit this file directly to customize the output without touching the Python code.
+
+Use a custom config path:
+
+```bash
+python scraper.py --book_id 12762 --style_config /path/to/my_config.json
+```
+
+### config file structure
+
+```json
+{
+  "fonts": {
+    "heading": "Scheherazade New",
+    "body": "Scheherazade New"
+  },
+  "body_size_pdf": 14,
+  "body_size_docx": 15,
+  "palette": {
+    "gold": "#c99200",
+    "gold_light": "#e8b830",
+    "gold_dark": "#6b4f10",
+    "teal": "#256080",
+    "rust": "#b8451a",
+    "sepia": "#805830",
+    "ink": "#1a1008",
+    "cream": "#fefcf7",
+    "parchment": "#fcf8ef",
+    "brown": "#3e2712"
+  },
+  "shamela_span_colors": {
+    "c1": "#cc3333",
+    "c2": "#1a7a1a",
+    "c3": "#8a8a20",
+    "c4": "#909090",
+    "c5": "#1a7aa0"
+  },
+  "heading_levels": [
+    {"level": 0, "size_pdf": 18, "size_docx": 19, "color": "#e8b830", "shape": "۞"},
+    {"level": 1, "size_pdf": 17, "size_docx": 18, "color": "#b8451a", "shape": "❖"},
+    {"level": 2, "size_pdf": 17, "size_docx": 17, "color": "#256080", "shape": "◈"},
+    {"level": 3, "size_pdf": 17, "size_docx": 16, "color": "#805830", "shape": "◆"},
+    {"level": 4, "size_pdf": 17, "size_docx": 16, "color": "#2d7a4f", "shape": "●"},
+    {"level": 5, "size_pdf": 17, "size_docx": 16, "color": "#7b2d8e", "shape": "★"},
+    {"level": 6, "size_pdf": 17, "size_docx": 16, "color": "#c07a1a", "shape": "✦"},
+    {"level": 7, "size_pdf": 17, "size_docx": 16, "color": "#c0392b", "shape": "◇"},
+    {"level": 8, "size_pdf": 17, "size_docx": 16, "color": "#1e7a9e", "shape": "◎"},
+    {"level": 9, "size_pdf": 17, "size_docx": 16, "color": "#c06080", "shape": "▪"}
+  ],
+  "delimiter_colors": {
+    "brace": "#FF0000",
+    "verse": "#FF0000"
+  }
+}
+```
+
+| Section | What it controls |
+|---------|-----------------|
+| `fonts` | Typeface for heading text (`heading`) and body text (`body`). Affects both PDF and DOCX. |
+| `body_size_pdf` | Body text size in PDF (pt). |
+| `body_size_docx` | Body text size in DOCX (pt). |
+| `palette` | Named colors used across cover, headings, borders, etc. Change these to shift the entire color scheme. |
+| `shamela_span_colors` | Colors for Shamela's original `<span class="c1">` through `<span class="c5">` used in body text. |
+| `heading_levels` | Per-level settings: `size_pdf` / `size_docx` (pt), `color` (hex), and `shape` (Unicode character). |
+| `delimiter_colors` | Colors for `{...}` brace text and `﴾...﴿` / `﴿...﴾` verse delimiters in body content. |
+
+Any field you omit falls back to the built-in default. You only need to include the values you want to change.
 
 ## Cloudflare bypass
 
