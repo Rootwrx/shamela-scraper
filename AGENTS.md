@@ -5,3 +5,5 @@
 -  Never commit, merge or push without asking me
 
 -  Always use `--no-ff` when merging to `main`
+
+-  Always attach `scraper.py` to every GitHub release.
