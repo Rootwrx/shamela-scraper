@@ -4578,10 +4578,13 @@ def _md_emit_line(f, container, max_toc_level: int = -1) -> None:
             if "bm-setter" in classes:
                 continue
             if "hamesh" in classes:
+                hamesh_lines = []
                 for p in child.find_all("p", recursive=False):
                     txt = _md_inline_html(str(p.decode_contents())).strip()
                     if txt:
-                        f.write(f"> {txt}\n\n")
+                        hamesh_lines.append(f"> {txt}")
+                if hamesh_lines:
+                    f.write("\n".join(hamesh_lines) + "\n\n")
                 continue
             _md_emit_line(f, child, max_toc_level)
             continue
