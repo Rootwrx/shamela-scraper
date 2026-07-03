@@ -3053,30 +3053,12 @@ def resolve_book_headings(meta: dict, pages_iter):
                     consumed_positions.add((pi, li))
                     echo_suppressed.append([pi, li])
 
-        deepest_level = breadcrumb_stack[-1][2] if breadcrumb_stack else -1
-        deepest_number = breadcrumb_stack[-1][0] if breadcrumb_stack else "0"
-        for h in located:
-            deepest_level, deepest_number = h["level"], h["number"]
-
-        # Compute how many TOC children exist under the deepest heading on
-        # this page so auto-detected bracket headings can continue the
-        # numbering without conflicting with existing TOC entries.
-        existing_child_count = 0
-        if deepest_number != "0":
-            existing_child_count = sum(
-                1
-                for _, _, num, _, _ in page_toc_new
-                if num.startswith(f"{deepest_number}.")
-                and num.count(".") == deepest_number.count(".") + 1
-            )
-
         # Collect normalized texts of all already-resolved TOC headings so
         # we can skip bracket headings that duplicate them.  Prevents a TOC
         # entry whose label isn't found in the text (implicit) from being
         # echoed a second time via bracket auto-detection of the same text.
         located_norms: set[str] = {_normalize_ar(h["text"]) for h in located}
 
-        auto_n = 0
         resolved: list[dict] = list(located)
         for bh in bracket_headings:
             pos = (bh["para_idx"], bh["line_idx"])
@@ -3095,24 +3077,10 @@ def resolve_book_headings(meta: dict, pages_iter):
                             h.setdefault("suppress", []).append(list(pos))
                         break
                 continue
-            auto_n += 1
-            auto_level = min(deepest_level + 1, 6)
-            if deepest_number == "0":
-                auto_number = str(auto_n)
-            else:
-                auto_number = f"{deepest_number}.{existing_child_count + auto_n}"
-            resolved.append(
-                {
-                    **bh,
-                    "positions": [pos],
-                    "level": auto_level,
-                    "number": auto_number,
-                    "matched": False,
-                    "auto": True,
-                    "implicit": False,
-                    "keep_line": False,
-                }
-            )
+            # Bracket heading not in TOC — treat as body text, not a heading.
+            # Its position is NOT added to consumed_positions so the line
+            # renders normally as body text rather than being echo-suppressed.
+            continue
 
         # Mark headings whose first position coincides with a bracket heading
         # as "bracket_matched" — these are real content headings, not just
