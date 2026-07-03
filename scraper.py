@@ -11,6 +11,7 @@ Output tree (per book)
     <out_dir>/<category>_<name>/<author_id>_<name>/<book_id>_<title>/
         book_<id>.pdf           (or book_<id>_<juz>.pdf for multi-volume books)
         book_<id>.docx          (only with --docx)
+        book_<id>.md            (only with --md)
         book_<id>.json          (combined export — disabled by default for large books)
         meta.json               (title, author, publisher, TOC tree, volumes, ...)
         author_info.json        (biography + other books by same author)
@@ -27,6 +28,9 @@ Output formats
   • DOCX — Native Word .docx with outline navigation, per-level heading
            colors, hamesh footnotes, RTL page layout.  Requires python-docx.
            Optional: --single, --docx (build DOCX alongside PDF).
+  • MD   — Markdown .md with YAML front-matter, heading outline matching
+           the TOC, volume dividers, and hamesh-as-blockquote.
+           Optional: --single, --md.
 
 Core features
 ─────────────
@@ -94,6 +98,12 @@ Usage
 
     # both PDF and DOCX
     python shamela_scraper.py --book_id 12762 --docx --pdf
+
+    # Markdown alongside PDF
+    python shamela_scraper.py --book_id 12762 --md
+
+    # all three formats
+    python shamela_scraper.py --book_id 12762 --docx --md --no-pdf
 
     # JSON only — no PDF/DOCX output
     python shamela_scraper.py --book_id 12762 --json_only
@@ -1987,7 +1997,7 @@ def scrape_book_pages_resumable(
 # ═══════════════════════════════════════════════════════════════════════════
 
 import html as _html
-
+import io
 
 def _e(text: str) -> str:
     """HTML-escape a string."""
@@ -4538,6 +4548,221 @@ def _docx_add_page_number_header(doc) -> None:
     r.font.color.rgb = RGBColor.from_string("888888")
 
 
+def _md_inline_html(html: str) -> str:
+    """Convert shamela color classes (c1-c5) to inline styles so colors
+    survive in Markdown."""
+    span_colors = STYLE_CFG.get("shamela_span_colors", DEFAULT_STYLE_CFG["shamela_span_colors"])
+    for cls, color in span_colors.items():
+        html = re.sub(
+            rf'<span[^>]*class="?{cls}"?[^>]*>(.*?)</span>',
+            rf'<span style="color:{color}">\1</span>',
+            html,
+            flags=re.DOTALL,
+        )
+    return html
+
+
+def _md_emit_line(f, container, max_toc_level: int = -1) -> None:
+    """Walk the HTML fragment from _render_page_html and emit Markdown.
+
+    Heading level mapping (from toc-bm-N class):
+        level 0 → h1, level 1 → h2, …, level 5+ → h6.
+    Shape characters from _HEADING_SHAPES are prepended.
+    Body paragraphs preserve inline HTML; shamela color classes (c1-c5)
+    are converted to inline style attributes.
+    """
+    elements = [c for c in container.children if getattr(c, "name", None)]
+    for idx, child in enumerate(elements):
+        classes = child.get("class", []) if hasattr(child, "get") else []
+        if child.name == "div":
+            if "bm-setter" in classes:
+                continue
+            if "hamesh" in classes:
+                for p in child.find_all("p", recursive=False):
+                    txt = _md_inline_html(str(p.decode_contents())).strip()
+                    if txt:
+                        f.write(f"> {txt}\n\n")
+                continue
+            _md_emit_line(f, child, max_toc_level)
+            continue
+        if child.name == "p":
+            if "toc-bookmark-anchor" in classes:
+                nxt = elements[idx + 1] if idx + 1 < len(elements) else None
+                nxt_classes = (
+                    nxt.get("class", []) if nxt is not None and hasattr(nxt, "get") else []
+                )
+                has_visible_pair = (
+                    nxt is not None and nxt.name == "p" and "toc-numbered-heading" in nxt_classes
+                )
+                m = re.search(r"toc-bm-(\d+)", " ".join(classes))
+                level_num = min(int(m.group(1)), 5) if m else 0
+                in_toc_range = max_toc_level < 0 or level_num <= max_toc_level
+                if not in_toc_range:
+                    continue
+                heading_text = child.get_text(" ", strip=True)
+                shape = _HEADING_SHAPES.get(level_num, "")
+                shape_str = f"{shape} " if shape else ""
+                f.write(f"{'#' * (level_num + 1)} {shape_str}{heading_text}\n\n")
+                continue
+            if "toc-numbered-heading" in classes:
+                continue
+            if "chapter-heading" in classes:
+                txt = child.get_text(" ", strip=True)
+                if txt:
+                    f.write(f"**{txt}**\n\n")
+                continue
+            # Body paragraph – preserve inner HTML with color spans
+            inner = _md_inline_html(str(child.decode_contents())).strip()
+            if inner:
+                f.write(f"{inner}\n\n")
+            continue
+
+
+def build_md(
+    meta: dict,
+    author_info: dict,
+    pages_iter,
+    out_path: str,
+    volume_label: str | None = None,
+) -> None:
+    """Build a .md Markdown file from *pages_iter* with proper heading
+    outlines, volume dividers, and metadata front-matter.
+
+    Reuses _render_page_html for the actual content so heading/numbering
+    logic is identical to the PDF/DOCX.
+    """
+    cfg = STYLE_CFG
+    heading_font = cfg["fonts"]["heading"]
+    body_font = cfg["fonts"]["body"]
+    body_size = cfg.get("body_size_docx", 15)
+    hl_cfg = {h["level"]: h for h in cfg["heading_levels"]}
+
+    title = meta.get("title", "كتاب")
+    author = meta.get("author", "")
+    scraped_date = datetime.date.today().strftime("%Y-%m-%d")
+
+    lines: list[str] = []
+
+    # ── Embedded CSS ────────────────────────────────────────────────
+    _FONT_STACK = f"'{heading_font}', 'Traditional Arabic', 'Arabic Typesetting', 'Times New Roman', serif"
+    lines.append("<style>")
+    lines.append(f"body {{ font-family: {_FONT_STACK}; line-height: 2; direction: rtl; text-align: right; }}")
+    lines.append(f"p {{ font-family: {_FONT_STACK}; font-size: {body_size}pt; }}")
+    lines.append(f".cover-title {{ font-family: {_FONT_STACK}; font-size: 28pt; font-weight: bold; color: #1a1008; margin: 0.3em 0; }}")
+    lines.append(f".cover-subtitle {{ font-family: {_FONT_STACK}; font-size: 17pt; color: #805830; margin: 0.3em 0; }}")
+    lines.append(f".cover-basmala {{ font-family: {_FONT_STACK}; font-size: 16pt; color: #c99200; margin: 0.5em 0; }}")
+    for level in range(6):
+        h = hl_cfg.get(level)
+        if h:
+            c = h["color"]
+            s = h.get("size_docx", 16) + (5 - level)
+            lines.append(f"h{level + 1} {{ color: {c}; font-size: {s}pt; font-family: {_FONT_STACK}; }}")
+    lines.append("</style>")
+    lines.append("")
+    lines.append("<div dir='rtl'>")
+
+    # ── COVER ────────────────────────────────────────────────────────
+    lines.append("<div style='text-align:center'>")
+    lines.append("<div class='cover-basmala'>بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ</div>")
+    lines.append("")
+    lines.append(f"<div class='cover-title'>{title}</div>")
+    if volume_label:
+        lines.append(f"<div class='cover-subtitle'>الجزء {volume_label}</div>")
+    lines.append("")
+
+    meta_rows_html = ""
+    for label, key in [
+        ("المؤلف", "author"),
+        ("الناشر", "publisher"),
+        ("الطبعة", "edition"),
+        ("عدد الأجزاء", "volumes"),
+    ]:
+        val = meta.get(key)
+        if val:
+            meta_rows_html += f"<tr><td><strong>{label}</strong></td><td>{val}</td></tr>"
+    if meta_rows_html:
+        lines.append(f"<table style='margin:auto;text-align:right;direction:rtl'>{meta_rows_html}</table>")
+        lines.append("")
+
+    lines.append(
+        f"<p style='color:#888;font-size:9pt'>"
+        f"المصدر: {meta.get('url', '')} | تاريخ التحميل: {scraped_date}"
+        f"</p>"
+    )
+    lines.append("</div>")
+    lines.append("")
+
+    # ── AUTHOR BIO ───────────────────────────────────────────────────
+    if author_info and not author_info.get("error") and author_info.get("bio"):
+        lines.append("## ترجمة المؤلف")
+        lines.append("")
+        for line in author_info["bio"].splitlines():
+            stripped = line.strip()
+            if stripped:
+                lines.append(stripped)
+                lines.append("")
+
+    # ── BOOK TEXT ────────────────────────────────────────────────────
+    lines.append("## نص الكتاب")
+    lines.append("")
+
+    toc_flat = meta.get("toc_flat", [])
+    toc_by_page: dict = {}
+    max_toc_level = -1
+    for entry in toc_flat:
+        lvl = entry.get("level", 0)
+        if lvl > max_toc_level:
+            max_toc_level = lvl
+        pid = entry.get("page_id")
+        if pid is not None:
+            toc_by_page.setdefault(pid, []).append((entry.get("label", ""), lvl))
+
+    if volume_label is None:
+        vol_starts_list = sorted(meta.get("volume_start_pages", []))
+        vol_boundaries = set(vol_starts_list)
+        vol_labels_list = meta.get("volume_labels", [])
+    else:
+        vol_starts_list = []
+        vol_boundaries = set()
+        vol_labels_list = []
+    vol_num = [1]
+
+    if vol_starts_list and vol_labels_list:
+        lines.append(f"### الجزء {vol_labels_list[0]}")
+        lines.append("")
+
+    first_page = True
+    n_pages = 0
+    result: list[str] = []
+    for page in _ensure_resolved(meta, pages_iter):
+        pid = page.get("page_id")
+        if pid and pid in vol_boundaries and not first_page:
+            vol_label = (
+                vol_labels_list[vol_num[0]] if vol_labels_list else str(vol_num[0] + 1)
+            )
+            result.append(f"### الجزء {vol_label}")
+            result.append("")
+            vol_num[0] += 1
+
+        frag, _ = _render_page_html(page, toc_by_page, vol_boundaries, vol_num, max_toc_level)
+        first_page = False
+        n_pages += 1
+        if not frag.strip():
+            continue
+        buf = io.StringIO()
+        soup = BeautifulSoup(frag, "lxml")
+        _md_emit_line(buf, soup.body, max_toc_level)
+        buf.seek(0)
+        result.append(buf.read())
+
+    lines.append("".join(result))
+    lines.append("</div>")
+
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    print(f"  [md] saved → {out_path}  ({n_pages} pages)")
+
+
 def build_docx(
     meta: dict,
     author_info: dict,
@@ -4807,8 +5032,21 @@ def process_book(
         prev_dir = entry.get("dir")
         if prev_dir:
             bd = Path(out_dir) / prev_dir
-            out_patterns = ["*.pdf", "*.docx"]
-            if bd.exists() and any(bd.glob(p) for p in out_patterns):
+            want_docx = getattr(args, "docx", False)
+            want_md = getattr(args, "md", False)
+            want_pdf = getattr(args, "pdf", None)
+            if want_md and want_pdf is None:
+                want_pdf = False
+            elif want_pdf is None:
+                want_pdf = True
+            out_patterns = []
+            if want_pdf:
+                out_patterns.append("*.pdf")
+            if want_docx:
+                out_patterns.append("*.docx")
+            if want_md:
+                out_patterns.append("*.md")
+            if bd.exists() and any(list(bd.glob(p)) for p in out_patterns):
                 print(
                     f"[skip] book {book_id} ({entry.get('title', '')}) "
                     f"— output already exists (pass --override to rebuild)"
@@ -4821,6 +5059,7 @@ def process_book(
         and not args.override
         and not args.pdf_only
         and not args.docx
+        and not args.md
     ):
         print(f"[skip] book {book_id} ({entry.get('title', '')}) — already done")
         return
@@ -5008,11 +5247,18 @@ def _build_book_outputs(
                 print(
                     f"  [!] --juz {juz_arg} out of range (1–{n_avail}), ignoring"
                 )
-        # PDF and/or DOCX are controlled independently.
+        # PDF and/or DOCX/MD are controlled independently.
         # --pdf is on by default, --no-pdf to skip.
         # --docx builds DOCX alongside PDF (or alone with --no-pdf).
+        # --md implies --no-pdf unless --pdf is passed explicitly.
         want_docx = getattr(args, "docx", False)
-        want_pdf = getattr(args, "pdf", True)
+        want_md = getattr(args, "md", False)
+        want_pdf = getattr(args, "pdf", None)
+        # --md implies --no-pdf unless --pdf is explicitly passed
+        if want_md and want_pdf is None:
+            want_pdf = False
+        elif want_pdf is None:
+            want_pdf = True
 
         if want_pdf:
             has_volumes = (
@@ -5125,6 +5371,53 @@ def _build_book_outputs(
                 else:
                     print(f"[*] Building DOCX for book {book_id} ...")
                 build_docx(meta, author_info, docx_pages_iter, str(docx_path))
+
+        # ── Markdown (per-juz if volumes exist, otherwise single) ──────────
+        if want_md:
+            md_has_volumes = (
+                vol_pages
+                and vol_labels
+                and len(vol_pages) > 1
+                and not getattr(args, "single", False)
+            )
+            if md_has_volumes:
+                n_vols = len(vol_pages)
+                for vi in range(n_vols):
+                    if juz_arg is not None and vi + 1 != juz_arg:
+                        continue
+                    label = vol_labels[vi]
+                    vol_suffix = label.replace(" ", "_")
+                    if not vol_suffix:
+                        vol_suffix = str(vi + 1).zfill(3)
+                    md_name = f"book_{book_id}_{vol_suffix}.md"
+                    md_path = book_dir / md_name
+                    print(f"[*] Building MD for book {book_id}, juz '{label}' → {md_name} ...")
+                    md_vol_iter = _pages_by_volume(
+                        iter_pages_jsonl(resolved_path), vol_pages, vi
+                    )
+                    md_vol_iter = _prefix_headings_by_juz(
+                        md_vol_iter, vol_pages, include_juz_prefix=False
+                    )
+                    build_md(
+                        meta, author_info, md_vol_iter, str(md_path), volume_label=label
+                    )
+            else:
+                md_path = book_dir / f"book_{book_id}.md"
+                md_pages_iter = iter_pages_jsonl(resolved_path)
+                md_combined = getattr(args, "single", False)
+                if vol_pages and len(vol_pages) > 1 and md_combined:
+                    if getattr(args, "no_juz_outline", False):
+                        print(
+                            f"[*] Building combined MD for book {book_id} (plain, no juz outline) ..."
+                        )
+                    else:
+                        md_pages_iter = _prefix_headings_by_juz(md_pages_iter, vol_pages)
+                        print(
+                            f"[*] Building combined MD for book {book_id} (with juz outline) ..."
+                        )
+                else:
+                    print(f"[*] Building MD for book {book_id} ...")
+                build_md(meta, author_info, md_pages_iter, str(md_path))
 
     # Only mark "done" when scraping was actually performed and completed.
     # --pdf_only must never change the scraping status on its own, unless we
@@ -5281,10 +5574,11 @@ def main():
     parser.add_argument(
         "--pdf",
         action=argparse.BooleanOptionalAction,
-        default=True,
+        default=None,
         dest="pdf",
-        help="Generate PDF output (default: on). Use --no-pdf to skip PDF "
-        "when building only DOCX.",
+        help="Generate PDF output alongside other formats. "
+        "PDF is on by default unless --md or --docx is given. "
+        "Pass --pdf explicitly to force PDF together with --md.",
     )
     parser.add_argument(
         "--pdf_only",
@@ -5300,6 +5594,14 @@ def main():
         "outline navigation, per-level heading colors, and hamesh footnote "
         "blocks. Combine with --pdf to build both formats. "
         "Requires `pip install python-docx`.",
+    )
+    parser.add_argument(
+        "--md",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        dest="md",
+        help="Build a .md (Markdown) file instead of PDF. "
+        "Implies --no-pdf; pass --pdf explicitly to get both.",
     )
     parser.add_argument(
         "--single",

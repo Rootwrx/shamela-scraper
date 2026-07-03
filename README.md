@@ -258,7 +258,8 @@ python scraper.py --book_ids 12762,667 --workers 16 --delay 0.3
 | `--pdf_only` | `False` | Rebuild output from cached data only (no network) |
 | `--pdf` | `True` | Generate PDF output (use `--no-pdf` to disable) |
 | `--docx` | `False` | Build DOCX alongside PDF. Combine with `--no-pdf` for DOCX-only |
-| `--single` | `False` | Single combined file (PDF and/or DOCX) even when ajza'/volumes exist |
+| `--md` | `False` | Build Markdown `.md` file alongside other formats |
+| `--single` | `False` | Single combined file (PDF and/or DOCX/MD) even when ajza'/volumes exist |
 | `--no_juz_outline` | `False` | With `--single`: skip juz numbering in headings |
 | `--juz` | — | Output only a specific juz/volume (1-based index) |
 | `--force` | `False` | Re-scrape even if marked done; clears `pages.jsonl` |
@@ -284,6 +285,8 @@ python scraper.py --book_ids 12762,667 --workers 16 --delay 0.3
 │           ├── book_<id>_<label>.pdf      # Per-juz PDFs, e.g. book_30186_1.pdf
 │           ├── book_<id>.docx             # Single DOCX (only with --docx; or combined when --single)
 │           ├── book_<id>_<label>.docx     # Per-juz DOCX files (only with --docx)
+│           ├── book_<id>.md               # Single Markdown (only with --md; or combined when --single)
+│           ├── book_<id>_<label>.md       # Per-juz Markdown files (only with --md)
 │           ├── meta.json                  # Book metadata (title, author, volume info, etc.)
 │           ├── author_info.json           # Author biography from shamela
 │           ├── pages.jsonl                # Raw scraped pages (append-only, line-delimited JSON)
@@ -293,7 +296,7 @@ python scraper.py --book_ids 12762,667 --workers 16 --delay 0.3
 
 **Per-juz vs combined:** When a book has ajza' (volumes) listed in its dropdown, per-juz files are created by default. Use `--single` to get one combined file instead.
 
-**PDF vs DOCX:** PDF is built by default. Pass `--docx` to build DOCX alongside, or `--docx --no-pdf` for DOCX-only. The `--single` flag applies to whichever format is being built.
+**PDF vs DOCX vs MD:** PDF is built by default. Pass `--docx` to build DOCX alongside, or `--md` for Markdown, or `--docx --md` for all three. Combine with `--no-pdf` to skip PDF. The `--single` flag applies to whichever format(s) are being built.
 
 **JSON assembly:** The full `book_<id>.json` is skipped by default to save RAM on large books (17K-page Tafsir al-Tabari would consume several hundred MB). Pass `--json` to enable it. Individual source files (`pages.jsonl`, `pages_resolved.jsonl`, `meta.json`) are always on disk.
 
