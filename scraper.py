@@ -913,11 +913,11 @@ def _clean_inline(p_soup) -> str:
     Everything else is unwrapped to plain text.
     """
     COLORS = {
-        "c1": "#5f0000",
-        "c2": "#005300",
-        "c3": "#686800",
-        "c4": "#707070",
-        "c5": "#005c81",
+        "c1": "#cc3333",
+        "c2": "#1a7a1a",
+        "c3": "#8a8a20",
+        "c4": "#909090",
+        "c5": "#1a7aa0",
     }
 
     out = []
@@ -1950,15 +1950,15 @@ def _build_html_css(meta: dict, columns: int = 1, fast: bool = False) -> str:
     toc_bm_css = "\n    ".join(toc_bm_css_parts)
 
     # Islamic gold palette
-    GOLD = "#b8860b"
-    GOLD_L = "#daa520"
+    GOLD = "#c99200"
+    GOLD_L = "#e8b830"
     GOLD_D = "#6b4f10"
-    TEAL = "#1a3a4a"
-    RUST = "#8b2e00"
+    TEAL = "#256080"
+    RUST = "#b8451a"
     INK = "#1a1008"
     CREAM = "#fefcf7"
     PARCHMENT = "#fcf8ef"
-    SEPIA = "#5c3d1a"
+    SEPIA = "#805830"
     BROWN = "#3e2712"
 
     # kashida (Arabic letter-stretch justification) looks great but is a
@@ -3548,6 +3548,21 @@ def _render_page_html(
             f'<p class="toc-numbered-heading toc-nh-{nh_level}">{label_html}</p>\n'
         )
 
+    def _color_delimited_text(text: str) -> str:
+        """Wrap text between `{` and `}` or `﴾` and `﴿` in red bold span.
+        Unmatched delimiters are left as-is."""
+        text = re.sub(
+            r"(\{[^}]*\})",
+            r'<span style="color:#FF0000">\1</span>',
+            text,
+        )
+        text = re.sub(
+            r"(\uFD3E[^\uFD3E\uFD3F]*\uFD3F|\uFD3F[^\uFD3E\uFD3F]*\uFD3E)",
+            r'<span style="color:#FF0000">\1</span>',
+            text,
+        )
+        return text
+
     def _strip_body_color(body_line: str) -> str:
         """Strip leading Shamela teal span (c5 class or #005c81) from body line."""
         import re
@@ -3617,7 +3632,7 @@ def _render_page_html(
                 parts.append('<div class="hamesh">')
                 for line in para["lines"]:
                     if line.strip():
-                        parts.append(f"<p>{line.strip()}</p>")
+                        parts.append(f"<p>{_color_delimited_text(line.strip())}</p>")
                 parts.append("</div>")
                 continue
 
@@ -3658,14 +3673,14 @@ def _render_page_html(
                                         else "p"
                                     )
                                     parts.append(
-                                        f"<{tag}>{body_line}</{tag.split()[0]}>"
+                                        f"<{tag}>{_color_delimited_text(body_line)}</{tag.split()[0]}>"
                                     )
                         continue
                     # All artificial headings → show body as-is
                     body_line = line.strip()
                     if body_line:
                         tag = 'p class="chapter-heading"' if ptype == "heading" else "p"
-                        parts.append(f"<{tag}>{body_line}</{tag.split()[0]}>")
+                        parts.append(f"<{tag}>{_color_delimited_text(body_line)}</{tag.split()[0]}>")
                     continue
                 elif (pi, li) in suppressed_positions:
                     continue
@@ -3673,7 +3688,7 @@ def _render_page_html(
                 if ptype == "heading":
                     parts.append(f'<p class="chapter-heading">{body_line}</p>')
                 else:
-                    parts.append(f"<p>{body_line}</p>")
+                    parts.append(f"<p>{_color_delimited_text(body_line)}</p>")
     elif page.get("text"):
         for chunk in page["text"].split("\n\n"):
             if chunk.strip():
@@ -3986,12 +4001,12 @@ _DOCX_FONT_BODY = "Scheherazade New"
 _DOCX_FONT_HEAD = "Scheherazade New"
 
 # Same Islamic-gold palette + per-level heading colors as the PDF CSS.
-_DOCX_GOLD = "B8860B"
-_DOCX_GOLD_L = "DAA520"
-_DOCX_TEAL = "1A3A4A"
-_DOCX_RUST = "8B2E00"
+_DOCX_GOLD = "C99200"
+_DOCX_GOLD_L = "E8B830"
+_DOCX_TEAL = "256080"
+_DOCX_RUST = "B8451A"
+_DOCX_SEPIA = "805830"
 _DOCX_INK = "1A1008"
-_DOCX_SEPIA = "5C3D1A"
 
 _DOCX_LEVEL_COLORS = {
     0: (_DOCX_GOLD_L, 19),
@@ -4131,8 +4146,11 @@ def _docx_add_inline_html(paragraph, node, **run_kwargs) -> None:
             style = child.get("style", "")
             m = re.search(r"color:\s*(#[0-9a-fA-F]{6})", style)
             color = m.group(1) if m else run_kwargs.get("color_hex")
+            bold = bool(re.search(r"font-weight:\s*bold", style))
             kw = dict(run_kwargs)
             kw["color_hex"] = color
+            if bold:
+                kw["bold"] = True
             _docx_add_inline_html(paragraph, child, **kw)
         else:
             _docx_add_inline_html(paragraph, child, **run_kwargs)
