@@ -1,33 +1,50 @@
 #!/usr/bin/env python3
 """
-shamela_scraper.py — Scrape book(s) from shamela.ws and export to structured PDF + JSON.
+shamela_scraper.py — Scrape book(s) from shamela.ws and export to structured PDF + DOCX + JSON.
 
-NEW IN THIS VERSION
-────────────────────
-  • Download by category id(s):           --category_ids 123,45,355
-  • Download by one or many book ids:      --book_ids 12762,667
-  • Resumable downloads — exact page-level checkpointing per book via
-    <book_dir>/progress.json + <book_dir>/pages.jsonl (append-only).
-    Re-running the same command later picks up exactly where it left off.
-  • Structured output tree:
-        <out_dir>/<category_id>_<category_name>/<author_id>_<author_name>/<book_id>_<title>/
-            book_<id>.json
-            book_<id>.pdf
-            meta.json
-            author_info.json
-            pages.jsonl        (raw, append-only — source of truth while scraping)
-            progress.json      (resume checkpoint)
-  • Global manifest at <out_dir>/manifest.json tracks every book/author/category
-    ever processed (status, last page scraped, folder location, ...).
-  • Deeply-nested table-of-contents support: the TOC is now parsed as a true
-    tree (children follow nested <ul> elements) instead of a flat list, so
-    multi-level betaka-index structures are no longer flattened/lost.
-    `meta["toc"]` = nested tree, `meta["toc_flat"]` = flattened w/ level,
-    `meta["toc_summary"]` = quick stats (entry count / max depth).
+Supports resumable downloads, parallel page-fetching, multi-volume books,
+deeply-nested table-of-contents with lazy-loaded node expansion, Cloudflare
+cookie auto-refresh, and a global manifest across runs.
+
+Output tree (per book)
+──────────────────────
+    <out_dir>/<category>_<name>/<author_id>_<name>/<book_id>_<title>/
+        book_<id>.pdf           (or book_<id>_<juz>.pdf for multi-volume books)
+        book_<id>.docx          (only with --docx)
+        book_<id>.json          (combined export — disabled by default for large books)
+        meta.json               (title, author, publisher, TOC tree, volumes, ...)
+        author_info.json        (biography + other books by same author)
+        pages.jsonl             (raw scraped pages, append-only, source of truth)
+        progress.json           (resume checkpoint for interrupted runs)
+        pages_resolved.jsonl    (pages with TOC headings anchored inline)
+    <out_dir>/manifest.json     (global cross-run tracking)
+
+Output formats
+──────────────
+  • PDF  — A4, ornate gold/teal Islamic cover, WeasyPrint-rendered.
+           Per-juz splitting for multi-volume books (default).
+           Optional: --single_pdf, --columns 2 (two-column layout), --fast.
+  • DOCX — Native Word .docx with outline navigation, per-level heading
+           colors, hamesh footnotes, RTL page layout.  Requires python-docx.
+           Optional: --single_docx, --also_pdf (build both formats).
+
+Core features
+─────────────
+  • Resumable — pages.jsonl is the source of truth.  Re-run any command
+    to resume interrupted books; finished books are skipped.
+  • Parallel — configurable concurrent page fetches (--workers, default 4).
+  • TOC — recursive tree parsing for deeply-nested indices; lazy-loaded
+    [+] nodes expanded automatically via AJAX.
+  • Volumes — multi-juz books split into per-juz PDFs/DOCX files by default,
+    with heading numbering reset per volume.
+  • Cloudflare — automatic cookie refresh via refresh_cf.py when a 403 or
+    challenge page is detected.  Only one process runs the refresh at a time.
+  • Headings — TOC entries anchored to inline body text; auto-detected
+    bracket headings (e.g. [الباب الأول]) numbered as sub-headings.
 
 Usage
 ─────
-    # single book (legacy, still works)
+    # single book (legacy)
     python shamela_scraper.py --book_id 12762
 
     # several explicit books
@@ -36,25 +53,64 @@ Usage
     # everything in one or more categories
     python shamela_scraper.py --category_ids 13,33,40
 
-    # mix & match, custom output dir, resume automatically
+    # mix & match, custom output dir
     python shamela_scraper.py --category_ids 13 --book_ids 667 --out_dir ./library
 
-    # re-run any of the above later — already-finished books are skipped,
-    # partially-downloaded books resume from the exact next page id.
+    # re-run to resume incomplete books, skip finished ones
+    python shamela_scraper.py --category_ids 13
 
-    # force re-download even if marked done
+    # force re-scrape even if marked done
     python shamela_scraper.py --book_id 12762 --force
 
-    # only rebuild output(s) from already-scraped data (no network for pages)
+    # only rebuild outputs from cached data (no network)
     python shamela_scraper.py --book_id 12762 --pdf_only
 
-    # build a DOCX instead of a PDF (no PDF is produced)
+    # build DOCX instead of PDF
     python shamela_scraper.py --book_id 12762 --docx
 
-    # build both a DOCX and a PDF
+    # build both DOCX and PDF
     python shamela_scraper.py --book_id 12762 --docx --also_pdf
 
-    # quick look at what has been downloaded so far
+    # faster concurrency (16 workers, shorter delay)
+    python shamela_scraper.py --book_ids 12762 --workers 16 --delay 0.3
+
+    # two-column newspaper-style PDF layout
+    python shamela_scraper.py --book_id 12762 --columns 2
+
+    # drop kashida justification for faster PDF rendering
+    python shamela_scraper.py --book_id 12762 --fast
+
+    # single combined PDF even for multi-volume books
+    python shamela_scraper.py --book_id 12762 --single_pdf
+
+    # single combined PDF without juz numbering in headings
+    python shamela_scraper.py --book_id 12762 --single_pdf --no_juz_outline
+
+    # specific volume only (1-based)
+    python shamela_scraper.py --book_id 12762 --juz 3
+
+    # single combined DOCX for multi-volume books (PDF untouched)
+    python shamela_scraper.py --book_id 12762 --single_docx
+
+    # per-juz PDFs + combined DOCX
+    python shamela_scraper.py --book_id 12762 --also_pdf --single_docx
+
+    # JSON only — no PDF/DOCX output
+    python shamela_scraper.py --book_id 12762 --json_only
+
+    # scrape only first 50 pages per book
+    python shamela_scraper.py --category_ids 13 --limit 50
+
+    # continue from a specific page ID
+    python shamela_scraper.py --book_id 12762 --start_page 200
+
+    # refresh cached category listings
+    python shamela_scraper.py --category_ids 13 --refresh_categories
+
+    # process at most 5 books (testing)
+    python shamela_scraper.py --category_ids 13 --max_books 5
+
+    # quick status summary
     python shamela_scraper.py --out_dir ./library --status
 """
 
