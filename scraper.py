@@ -2337,27 +2337,27 @@ def _build_html_css(meta: dict, columns: int = 1, fast: bool = False) -> str:
     }}
     .toc-numbered-heading.toc-nh-4 {{
         font-size: 17pt;
-        color: #2d6a4f;
+        color: #2d7a4f;
     }}
     .toc-numbered-heading.toc-nh-5 {{
         font-size: 17pt;
-        color: #6a0dad;
+        color: #7b2d8e;
     }}
     .toc-numbered-heading.toc-nh-6 {{
         font-size: 17pt;
-        color: #8b4513;
+        color: #c07a1a;
     }}
     .toc-numbered-heading.toc-nh-7 {{
         font-size: 17pt;
-        color: #4a4a4a;
+        color: #c0392b;
     }}
     .toc-numbered-heading.toc-nh-8 {{
         font-size: 17pt;
-        color: #2e6b8a;
+        color: #1e7a9e;
     }}
     .toc-numbered-heading.toc-nh-9 {{
         font-size: 17pt;
-        color: #555;
+        color: #c06080;
     }}
     /* Auto-detected bracket headings — italic */
     .toc-numbered-heading.toc-nh-auto {{
@@ -4026,12 +4026,12 @@ _DOCX_LEVEL_COLORS = {
     1: (_DOCX_RUST, 18),
     2: (_DOCX_TEAL, 17),
     3: (_DOCX_SEPIA, 16),
-    4: ("2D6A4F", 16),
-    5: ("6A0DAD", 16),
-    6: ("8B4513", 16),
-    7: ("4A4A4A", 16),
-    8: ("2E6B8A", 16),
-    9: ("555555", 16),
+    4: ("2D7A4F", 16),
+    5: ("7B2D8E", 16),
+    6: ("C07A1A", 16),
+    7: ("C0392B", 16),
+    8: ("1E7A9E", 16),
+    9: ("C06080", 16),
 }
 
 
@@ -4847,21 +4847,24 @@ def _build_book_outputs(
     print(f"    → headings renumbered by content order")
 
     # ── assemble combined JSON ───────────────────────────────────────────
-    # NOTE: skipped by default to save RAM on large books (17K-page Tafsir
-    # al-Tabari would consume several hundred MB).  The individual data
-    # sources (pages.jsonl, pages_resolved.jsonl, meta.json, author_info.json)
-    # are always available on disk — no information is lost.
-    #
-    # Re-enable for smaller books or if you need a single-file export:
-    #     pages = load_pages_jsonl(resolved_path)
-    #     data = {"meta": meta, "pages": pages}
-    #     if author_info and not author_info.get("error") and author_info.get("bio"):
-    #         data["author_info"] = author_info
-    #     json_path = book_dir / f"book_{book_id}.json"
-    #     atomic_write_json(json_path, data)
-    #     print(f"  [json] saved → {json_path}  ({len(pages)} pages)")
-    #     del pages
-    #     import gc; gc.collect()
+    # Enabled via --json flag.  Skipped by default to save RAM on large books
+    # (17K-page Tafsir al-Tabari would consume several hundred MB).
+    if args.save_json:
+        pages = load_pages_jsonl(resolved_path)
+        data = {
+            "meta": meta,
+            "toc_flat": meta.get("toc_flat", []),
+            "toc": meta.get("toc", []),
+            "pages": pages,
+        }
+        if author_info and not author_info.get("error") and author_info.get("bio"):
+            data["author_info"] = author_info
+        json_path = book_dir / f"book_{book_id}.json"
+        atomic_write_json(json_path, data)
+        print(f"  [json] saved → {json_path}  ({len(pages)} pages)")
+        del pages
+        import gc
+        gc.collect()
 
     # ── PDF (per-juz if volumes exist, otherwise single) ──────────────────
     if not args.json_only:
@@ -5163,6 +5166,14 @@ def main():
         action="store_true",
         help="Only scrape + save the raw page data, skip building any output "
         "document (no PDF, no DOCX).",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="save_json",
+        help="Save a single combined JSON file (meta + TOC + all pages with "
+        "resolved headings). Useful for post-processing or manual inspection. "
+        "Generates book_<id>.json in the book directory.",
     )
     parser.add_argument(
         "--pdf_only",

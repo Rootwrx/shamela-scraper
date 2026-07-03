@@ -214,6 +214,26 @@ python scraper.py --out_dir ./shamela_output --status
 python scraper.py --book_id 12762 --json_only
 ```
 
+### Save combined book JSON (meta + TOC + all pages with headings)
+
+```bash
+python scraper.py --book_id 12762 --json
+```
+
+The combined file `book_<id>.json` contains:
+
+```
+{
+  "meta":           { ... },           # book metadata, volume info, toc_summary
+  "toc_flat":       [ ... ],           # flat TOC entries with level, label, page_id
+  "toc":            [ ... ],           # nested TOC tree (for hierarchy)
+  "pages":          [ ... ],           # every page with resolved_headings
+  "author_info":    { ... }            # author biography (if available)
+}
+```
+
+Each page's `resolved_headings` array includes the heading number, label, level, page position, and whether it was bracket-matched or implicit — everything needed for post-processing.
+
 ### Control concurrency and politeness
 
 ```bash
@@ -234,7 +254,7 @@ python scraper.py --book_ids 12762,667 --workers 16 --delay 0.3
 | `--limit` | — | Max pages to scrape per book |
 | `--cf_clearance` | — | Cloudflare `cf_clearance` cookie value |
 | `--user-agent` / `--ua` | — | Browser User-Agent matching the `cf_clearance` source |
-| `--json_only` | `False` | Only save JSON, skip PDF/DOCX generation |
+| `--json` | `False` | Save a combined `book_<id>.json` (meta + TOC + all pages with resolved headings) alongside other outputs |
 | `--pdf_only` | `False` | Rebuild output from cached data only (no network) |
 | `--docx` | `False` | Build DOCX instead of PDF (requires python-docx) |
 | `--also_pdf` | `False` | With `--docx`: build PDF alongside DOCX |
@@ -258,7 +278,7 @@ python scraper.py --book_ids 12762,667 --workers 16 --delay 0.3
 ├── <category_id>_<category_name>/
 │   └── <author_id>_<author_name>/
 │       └── <book_id>_<title>/
-│           ├── book_<id>.json             # Full combined JSON (not saved by default — too large)
+│           ├── book_<id>.json             # Full combined JSON (meta, TOC, all pages with headings); saved only with `--json`
 │           ├── book_<id>.pdf              # Single PDF (or combined when --single_pdf)
 │           ├── book_<id>_<label>.pdf      # Per-juz PDFs, e.g. book_30186_1.pdf
 │           ├── book_<id>.docx             # Single DOCX (only with --docx; or combined when --single_docx)
@@ -274,7 +294,7 @@ python scraper.py --book_ids 12762,667 --workers 16 --delay 0.3
 
 **PDF vs DOCX:** PDF is built by default. Pass `--docx` to build DOCX instead, or `--docx --also_pdf` to build both formats. Each format independently respects `--single_pdf` / `--single_docx` — you can have per-juz PDFs alongside a combined DOCX.
 
-**JSON assembly:** The full `book_<id>.json` is skipped by default to save RAM on large books. Individual source files (`pages.jsonl`, `pages_resolved.jsonl`, `meta.json`) are always on disk.
+**JSON assembly:** The full `book_<id>.json` is skipped by default to save RAM on large books (17K-page Tafsir al-Tabari would consume several hundred MB). Pass `--json` to enable it. Individual source files (`pages.jsonl`, `pages_resolved.jsonl`, `meta.json`) are always on disk.
 
 ## Resumability
 
