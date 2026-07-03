@@ -45,8 +45,14 @@ Usage
     # force re-download even if marked done
     python shamela_scraper.py --book_id 12762 --force
 
-    # only rebuild PDFs from already-scraped data (no network for pages)
+    # only rebuild output(s) from already-scraped data (no network for pages)
     python shamela_scraper.py --book_id 12762 --pdf_only
+
+    # build a DOCX instead of a PDF (no PDF is produced)
+    python shamela_scraper.py --book_id 12762 --docx
+
+    # build both a DOCX and a PDF
+    python shamela_scraper.py --book_id 12762 --docx --also_pdf
 
     # quick look at what has been downloaded so far
     python shamela_scraper.py --out_dir ./library --status
@@ -74,6 +80,16 @@ try:
     from weasyprint import HTML as WeasyprintHTML
 except ImportError:  # pdf building simply unavailable until installed
     WeasyprintHTML = None
+
+try:
+    import docx as _docxlib
+    from docx.shared import Pt, Cm, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
+    from docx.enum.style import WD_STYLE_TYPE
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+except ImportError:  # docx building simply unavailable until `pip install python-docx`
+    _docxlib = None
 
 try:
     import orjson as _orjson
@@ -1849,8 +1865,13 @@ def _truncate(title: str, max_words: int = 5) -> str:
 # meta["toc_flat"] for downstream use, but no visible TOC page is produced.
 
 
-def _build_html_css(meta: dict) -> str:
-    """Return the full <style> block CSS string (shared by stream and legacy paths)."""
+def _build_html_css(meta: dict, columns: int = 1, fast: bool = False) -> str:
+    """Return the full <style> block CSS string (shared by stream and legacy paths).
+
+    columns: number of text columns per page for the book-text body (1 or 2).
+             2 gives a classic printed-book two-column layout via CSS
+             multi-column (WeasyPrint supports `column-count`/`column-gap`).
+    """
     import datetime as _dt  # noqa: F401 — kept for callers that need it
 
     font_body = '"Scheherazade New", "Noto Naskh Arabic", "Amiri Quran", "Amiri", serif'
@@ -1884,6 +1905,12 @@ def _build_html_css(meta: dict) -> str:
     SEPIA = "#5c3d1a"
     BROWN = "#3e2712"
 
+    # kashida (Arabic letter-stretch justification) looks great but is a
+    # major WeasyPrint performance sink — it runs a custom per-line glyph
+    # pass for every justified line. --fast (or fast=True) drops it in
+    # favor of plain justify, which is dramatically faster on big books.
+    JUSTIFY_RULE = "" if fast else "text-justify: kashida;"
+
     css = f"""
     /* ═══════════════════════════════════════════════════════
        PAGE GEOMETRY  —  tight margins = maximum words per page
@@ -1892,7 +1919,7 @@ def _build_html_css(meta: dict) -> str:
     /* Front-matter: roman numerals, no running header */
     @page front-matter {{
         size: A4;
-        margin: 1.6cm 1.8cm 2cm 1.8cm;
+        margin: 1cm 1.1cm 1.3cm 1.1cm;
         background: {CREAM};
         @bottom-center {{
             content: counter(page, lower-roman);
@@ -1908,7 +1935,7 @@ def _build_html_css(meta: dict) -> str:
     /* Book-text pages */
     @page book-text {{
         size: A4;
-        margin: 1.6cm 1.8cm 2cm 1.8cm;
+        margin: 1cm 1.1cm 1.3cm 1.1cm;
         background: {CREAM};
 
         @top-left {{
@@ -1938,7 +1965,7 @@ def _build_html_css(meta: dict) -> str:
     /* Bare @page default (cover) */
     @page {{
         size: A4;
-        margin: 1.5cm;
+        margin: 1cm;
         background: linear-gradient(180deg, {PARCHMENT} 0%, {CREAM} 25%, #fffdf5 50%, {CREAM} 75%, {PARCHMENT} 100%);
     }}
     @page :first {{
@@ -1964,7 +1991,7 @@ def _build_html_css(meta: dict) -> str:
         line-height: 1.9;
         direction: rtl;
         text-align: justify;
-        text-justify: kashida;
+        {JUSTIFY_RULE}
         color: {INK};
         background: {CREAM};
     }}
@@ -2130,6 +2157,23 @@ def _build_html_css(meta: dict) -> str:
         margin-top: 0;
     }}
 
+    /* ═══════════════════════════════════════════════════════
+       MULTI-COLUMN BOOK TEXT (--columns 2)
+       ═══════════════════════════════════════════════════════ */
+    {f'''
+    .section-text {{{{
+        column-count: {columns};
+        column-gap: 1cm;
+        column-fill: auto;
+    }}}}
+    .section-text h2, .section-text h3, .section-text h4 {{{{
+        column-span: all;
+    }}}}
+    .volume-divider {{{{
+        column-span: all;
+    }}}}
+    ''' if columns and columns > 1 else ''}
+
     /* Volume divider splash */
     .volume-divider {{
         margin: 0 0 15px 0;
@@ -2289,7 +2333,7 @@ def _build_html_css(meta: dict) -> str:
     .page-text p {{
         margin: 0.15em 0;          /* minimal vertical gap = more words per page */
         text-align: justify;
-        text-justify: kashida;
+        {JUSTIFY_RULE}
         orphans: 2;
         widows: 2;
         font-weight: 500;
@@ -2299,13 +2343,21 @@ def _build_html_css(meta: dict) -> str:
        FOOTNOTES (hamesh)
        ═══════════════════════════════════════════════════════ */
     .hamesh {{
-        border-top: 1px solid {GOLD_L};
+        position: relative;
+        border-top: none;
         margin-top: 0.8em;
-        padding-top: 0.3em;
+        padding-top: 0.5em;
         font-size: 10pt;
         font-weight: 400;
         color: #555;
         line-height: 1.6;
+    }}
+    .hamesh::before {{
+        content: "";
+        display: block;
+        width: 3.5cm;
+        border-top: 1px dashed #999;
+        margin-bottom: 0.5em;
     }}
     .hamesh p {{
         margin: 0.05em 0;
@@ -3592,6 +3644,8 @@ def build_html_to_file(
     out_path: Path,
     flush_every: int = 50,
     volume_label: str | None = None,
+    columns: int = 1,
+    fast: bool = False,
 ) -> None:
     """
     Stream-write the full HTML document to *out_path* one page at a time.
@@ -3601,10 +3655,14 @@ def build_html_to_file(
     flush_every: write buffer to disk every N pages (default 50).
     volume_label: when set (e.g. "1", "المقدمة"), this is a per-juz PDF —
                   show the juz label on the cover and skip volume dividers.
+    columns: number of text columns per page (1 = normal, 2 = two-column
+             newspaper-style layout for the book text).
+    fast: drop kashida justification (major WeasyPrint speed win on big
+          books) in favor of plain justify.
     """
     import datetime
 
-    css = _build_html_css(meta)
+    css = _build_html_css(meta, columns=columns, fast=fast)
 
     # Build page_id -> [(label, toc_level), ...] lookup
     toc_flat = meta.get("toc_flat", [])
@@ -3795,11 +3853,16 @@ def build_pdf(
     out_path: str,
     flush_every: int = 50,
     volume_label: str | None = None,
+    columns: int = 1,
+    fast: bool = False,
 ):
     """
     Build a PDF from *pages_iter* (list or generator of page dicts).
 
     *volume_label* is forwarded to build_html_to_file for per-juz covers.
+    *columns* selects the page layout: 1 (default) = single-column,
+    2 = two-column layout for the book-text body.
+    *fast* drops kashida justification for a large WeasyPrint speed win.
 
     Strategy (memory-safe):
       1. Stream-write HTML to <out_path>.html — O(flush_every) memory.
@@ -3818,6 +3881,8 @@ def build_pdf(
         html_path,
         flush_every=flush_every,
         volume_label=volume_label,
+        columns=columns,
+        fast=fast,
     )
     print(f"  [html] done ({html_path.stat().st_size // 1024} KB)")
 
@@ -3838,7 +3903,623 @@ def build_pdf(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# FOLDER STRUCTURE: category / author / book
+# DOCX GENERATION  (python-docx — mirrors the PDF's cover/TOC/colors/hamesh)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Reuses _render_page_html verbatim for each page (same heading-resolution,
+# numbering, suppression logic as the PDF) and converts the small resulting
+# HTML fragment into native docx paragraphs/runs. This guarantees the two
+# formats never drift apart — there is exactly one heading-layout algorithm,
+# not two competing implementations.
+
+_DOCX_FONT_BODY = "Scheherazade New"
+_DOCX_FONT_HEAD = "Noto Kufi Arabic"
+
+# Same Islamic-gold palette + per-level heading colors as the PDF CSS.
+_DOCX_GOLD = "B8860B"
+_DOCX_GOLD_L = "DAA520"
+_DOCX_TEAL = "1A3A4A"
+_DOCX_RUST = "8B2E00"
+_DOCX_INK = "1A1008"
+_DOCX_SEPIA = "5C3D1A"
+
+_DOCX_LEVEL_COLORS = {
+    0: (_DOCX_GOLD_L, 16),
+    1: (_DOCX_RUST, 15),
+    2: (_DOCX_TEAL, 14),
+    3: (_DOCX_SEPIA, 13),
+    4: ("2D6A4F", 13),
+    5: ("6A0DAD", 13),
+    6: ("8B4513", 13),
+    7: ("4A4A4A", 13),
+    8: ("2E6B8A", 13),
+    9: ("555555", 13),
+}
+
+
+# OOXML requires child elements of <w:pPr>/<w:rPr>/<w:sectPr> to appear in
+# a fixed schema order. Blindly .append()-ing a manually built element (as
+# an earlier version of this code did for w:bidi/w:rFonts/w:pBdr) puts it
+# out of order, which Word/LibreOffice tolerate inconsistently — the visible
+# symptom is exactly the garbled/interleaved RTL text seen in practice.
+# These two lists + helper insert elements at the schema-correct position
+# regardless of what's already been set on the paragraph/run.
+_PPR_TAG_SEQ = (
+    "w:pStyle", "w:keepNext", "w:keepLines", "w:pageBreakBefore", "w:framePr",
+    "w:widowControl", "w:numPr", "w:suppressLineNumbers", "w:pBdr", "w:shd",
+    "w:tabs", "w:suppressAutoHyphens", "w:kinsoku", "w:wordWrap", "w:overflowPunct",
+    "w:topLinePunct", "w:autoSpaceDE", "w:autoSpaceDN", "w:bidi", "w:adjustRightInd",
+    "w:snapToGrid", "w:spacing", "w:ind", "w:contextualSpacing", "w:mirrorIndents",
+    "w:suppressOverlap", "w:jc", "w:textDirection", "w:textAlignment",
+    "w:textboxTightWrap", "w:outlineLvl", "w:divId", "w:cnfStyle", "w:rPr",
+    "w:sectPr", "w:pPrChange",
+)
+_SECTPR_TAG_SEQ = (
+    "w:headerReference", "w:footerReference", "w:footnotePr", "w:endnotePr",
+    "w:type", "w:pgSz", "w:pgMar", "w:paperSrc", "w:pgBorders", "w:lnNumType",
+    "w:pgNumType", "w:cols", "w:formProt", "w:vAlign", "w:noEndnote", "w:titlePg",
+    "w:textDirection", "w:bidi", "w:rtlGutter", "w:docGrid", "w:printerSettings",
+    "w:sectPrChange",
+)
+
+
+def _oxml_insert_ordered(parent, new_elm, tag: str, tag_seq: tuple) -> None:
+    """Insert *new_elm* (tag *tag*) into *parent* at the position required by
+    *tag_seq*, using python-docx's own insert_element_before (so it lands
+    before whichever later-in-sequence sibling already exists, or at the end
+    if none do)."""
+    successors = tag_seq[tag_seq.index(tag) + 1 :]
+    parent.insert_element_before(new_elm, *successors)
+
+
+def _docx_zero_indent(paragraph_format) -> None:
+    """Force left/right/first-line indent to 0 so nothing is ever nudged
+    away from the page margin (e.g. inherited indents from built-in
+    Heading styles), keeping titles/text flush against the margin."""
+    paragraph_format.left_indent = Pt(0)
+    paragraph_format.right_indent = Pt(0)
+    paragraph_format.first_line_indent = Pt(0)
+
+
+def _docx_page_break_before(paragraph) -> None:
+    """Mark *paragraph* to always start on a new page, via the
+    page-break-before paragraph property rather than inserting a separate
+    paragraph containing only a manual page-break run. The latter pattern
+    can leave a stray fully-blank page behind whenever natural pagination
+    already pushes that empty paragraph onto its own page — this avoids
+    that entirely since there's no orphan paragraph to begin with."""
+    paragraph.paragraph_format.page_break_before = True
+
+
+def _docx_set_bidi(paragraph) -> None:
+    """Mark a paragraph right-to-left (w:bidi) so Word lays it out as Arabic,
+    and strip any indent so it sits flush against the right margin."""
+    _docx_zero_indent(paragraph.paragraph_format)
+    pPr = paragraph._p.get_or_add_pPr()
+    if pPr.find(qn("w:bidi")) is not None:
+        return
+    bidi = OxmlElement("w:bidi")
+    _oxml_insert_ordered(pPr, bidi, "w:bidi", _PPR_TAG_SEQ)
+
+
+def _docx_style_set_bidi(style) -> None:
+    """Same as _docx_set_bidi but for a paragraph *style* definition
+    (<w:style><w:pPr> uses the identical child-order rules as a paragraph's
+    own <w:pPr>)."""
+    _docx_zero_indent(style.paragraph_format)
+    pPr = style.element.get_or_add_pPr()
+    if pPr.find(qn("w:bidi")) is not None:
+        return
+    bidi = OxmlElement("w:bidi")
+    _oxml_insert_ordered(pPr, bidi, "w:bidi", _PPR_TAG_SEQ)
+
+
+def _docx_set_run_rtl_font(run, font_name: str = _DOCX_FONT_BODY) -> None:
+    """Set both the ascii and complex-script (cs) font so Arabic actually
+    picks up *font_name* instead of falling back to a Latin default font."""
+    run.font.rtl = True
+    run.font.complex_script = True
+    rPr = run._r.get_or_add_rPr()
+    rFonts = rPr.get_or_add_rFonts()  # schema-ordered accessor, not a raw append
+    rFonts.set(qn("w:cs"), font_name)
+    rFonts.set(qn("w:ascii"), font_name)
+    rFonts.set(qn("w:hAnsi"), font_name)
+
+
+def _docx_add_run(
+    paragraph,
+    text: str,
+    *,
+    font_name: str = _DOCX_FONT_BODY,
+    size: float | None = None,
+    bold: bool = False,
+    color_hex: str | None = None,
+) -> None:
+    run = paragraph.add_run(text)
+    _docx_set_run_rtl_font(run, font_name)
+    if size:
+        run.font.size = Pt(size)
+    run.font.bold = bold
+    if color_hex:
+        run.font.color.rgb = RGBColor.from_string(color_hex.lstrip("#").upper())
+
+
+def _docx_add_inline_html(paragraph, node, **run_kwargs) -> None:
+    """Walk a <p>-like bs4 node, emitting runs for text / span.color / <br>."""
+    from bs4 import NavigableString
+
+    for child in node.children:
+        if isinstance(child, NavigableString):
+            text = str(child)
+            if text:
+                _docx_add_run(paragraph, text, **run_kwargs)
+        elif child.name == "br":
+            run = paragraph.add_run()
+            _docx_set_run_rtl_font(run, run_kwargs.get("font_name", _DOCX_FONT_BODY))
+            run.add_break(WD_BREAK.LINE)
+        elif child.name == "span":
+            style = child.get("style", "")
+            m = re.search(r"color:\s*(#[0-9a-fA-F]{6})", style)
+            color = m.group(1) if m else run_kwargs.get("color_hex")
+            kw = dict(run_kwargs)
+            kw["color_hex"] = color
+            _docx_add_inline_html(paragraph, child, **kw)
+        else:
+            _docx_add_inline_html(paragraph, child, **run_kwargs)
+
+
+def _docx_add_body_paragraph(doc, p_tag, *, style_name: str = "Shamela Body") -> None:
+    para = doc.add_paragraph(style=style_name)
+    para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    _docx_set_bidi(para)
+    _docx_add_inline_html(para, p_tag, font_name=_DOCX_FONT_BODY, size=15, bold=True)
+
+
+def _docx_add_chapter_heading(doc, p_tag) -> None:
+    para = doc.add_paragraph()
+    para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    _docx_set_bidi(para)
+    para.paragraph_format.space_before = Pt(10)
+    para.paragraph_format.space_after = Pt(6)
+    text = p_tag.get_text(" ", strip=True)
+    _docx_add_run(
+        para, text, font_name=_DOCX_FONT_HEAD, size=14, bold=True, color_hex=_DOCX_RUST
+    )
+
+
+def _docx_add_visible_heading(doc, text: str, level_num: int) -> None:
+    """Visible, styled heading paragraph for on-page display only.
+
+    Deliberately NOT a Word "Heading N" style, so it does not create an
+    entry in the Navigation Pane / outline — exactly like the PDF's
+    `.toc-numbered-heading`, which explicitly sets `bookmark-level: none`.
+    The outline entry (carrying the numbering) comes solely from the
+    paired invisible anchor via `_docx_add_invisible_heading`, so numbers
+    never appear in the visible content, only in the outline.
+    """
+    if not text.strip():
+        return
+    color, size = _DOCX_LEVEL_COLORS.get(min(level_num, 9), _DOCX_LEVEL_COLORS[9])
+    para = doc.add_paragraph()
+    para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    _docx_set_bidi(para)
+    para.paragraph_format.space_before = Pt(8)
+    para.paragraph_format.space_after = Pt(4)
+    _docx_add_run(para, text, font_name=_DOCX_FONT_HEAD, size=size, bold=True, color_hex=color)
+
+
+_DOCX_NUM_PREFIX_RE = re.compile(r"^\s*[\d٠-٩]+(?:[.\u066B][\d٠-٩]+)*[.\u066B]?\s+")
+
+
+def _docx_strip_number_prefix(text: str) -> str:
+    """Strip a leading 'N. ' / '1.2. ' style number label off heading text,
+    so the visible on-page paragraph never repeats the outline's numbering."""
+    return _DOCX_NUM_PREFIX_RE.sub("", text, count=1)
+
+
+def _docx_add_invisible_heading(doc, text: str, level_num: int) -> None:
+    """A heading that exists purely for outline/navigation purposes.
+
+    Mirrors the PDF's `.toc-bookmark-anchor` paragraphs: in the PDF, every
+    outline/bookmark entry is generated from these anchors specifically
+    (bookmark-level lives on `.toc-bm-N`, while the *visible*
+    `.toc-numbered-heading` explicitly sets `bookmark-level: none`). For
+    "implicit" TOC entries — headings the scraper knows about from the
+    book's TOC but never found matching visible text for on the page —
+    the PDF renders *only* this anchor (1pt, height 0, invisible on the
+    page) so the title still shows up in the PDF's outline.
+
+    Word has no equivalent of an invisible-but-indexed element, so we add
+    a real "Heading N" paragraph (so it lands in the Navigation Pane / any
+    TOC field) but shrink it to be visually negligible on the page, same
+    intent as the PDF's invisible anchor.
+    """
+    if not text.strip():
+        return
+    word_level = min(level_num + 1, 9)
+    para = doc.add_heading(level=word_level)
+    para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    _docx_set_bidi(para)
+    para.paragraph_format.space_before = Pt(0)
+    para.paragraph_format.space_after = Pt(0)
+    para.paragraph_format.line_spacing = Pt(1)
+    run = para.add_run(text)
+    _docx_set_run_rtl_font(run, _DOCX_FONT_HEAD)
+    run.font.size = Pt(1)
+    run.font.color.rgb = RGBColor.from_string("FFFFFF")
+
+
+def _docx_add_hamesh(doc, div_tag) -> None:
+    # Dashed top border to echo the PDF's `.hamesh::before` rule line.
+    # The paragraph carrying the border has no visible text, but Word still
+    # reserves a full line of height for it based on the *document default*
+    # font size unless we shrink that explicitly — that was producing the
+    # big empty gap around the line. Pinning line_spacing to an exact small
+    # value + a tiny hidden run collapses it down to a hairline.
+    rule = doc.add_paragraph()
+    rule.paragraph_format.space_before = Pt(6)
+    rule.paragraph_format.space_after = Pt(0)
+    rule.paragraph_format.line_spacing = Pt(1)
+    pPr = rule._p.get_or_add_pPr()
+    pBdr = OxmlElement("w:pBdr")
+    top = OxmlElement("w:top")
+    top.set(qn("w:val"), "dashed")
+    top.set(qn("w:sz"), "6")
+    top.set(qn("w:space"), "1")
+    top.set(qn("w:color"), "999999")
+    pBdr.append(top)
+    _oxml_insert_ordered(pPr, pBdr, "w:pBdr", _PPR_TAG_SEQ)
+    # Hidden 1pt run so the paragraph's line box shrinks to match the exact
+    # line_spacing above instead of inheriting the doc's base font size.
+    hidden_run = rule.add_run("")
+    hidden_run.font.size = Pt(1)
+    for p in div_tag.find_all("p", recursive=False):
+        para = doc.add_paragraph()
+        para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        _docx_set_bidi(para)
+        para.paragraph_format.space_before = Pt(0)
+        para.paragraph_format.space_after = Pt(2)
+        _docx_add_inline_html(para, p, font_name=_DOCX_FONT_BODY, size=10, color_hex="555555")
+
+
+def _docx_emit_fragment(doc, container, max_toc_level: int = -1) -> None:
+    """Recursively walk the HTML fragment from _render_page_html and emit
+    the equivalent native docx content.
+
+    max_toc_level: the deepest level present in the book's real TOC
+    (meta["toc_flat"]). Mirrors the PDF's `toc_bm_css`, which only defines
+    a `bookmark-level` CSS rule for levels 0..max_toc_level — anything
+    deeper (auto-detected bracket headings with no real TOC entry) is
+    rendered as a plain styled heading on the page but never reaches the
+    PDF's bookmark pane. -1 means "unknown / no TOC data", in which case
+    every heading is still added to the outline (safe fallback)."""
+    elements = [c for c in container.children if getattr(c, "name", None)]
+    for idx, child in enumerate(elements):
+        classes = child.get("class", []) if hasattr(child, "get") else []
+        if child.name == "div":
+            if "bm-setter" in classes:
+                continue  # invisible PDF-only bookmark marker, no docx equivalent needed
+            if "hamesh" in classes:
+                _docx_add_hamesh(doc, child)
+                continue
+            # structural wrapper (page-entry / page-text) → recurse
+            _docx_emit_fragment(doc, child, max_toc_level)
+            continue
+        if child.name == "p":
+            if "toc-bookmark-anchor" in classes:
+                nxt = elements[idx + 1] if idx + 1 < len(elements) else None
+                nxt_classes = (
+                    nxt.get("class", []) if nxt is not None and hasattr(nxt, "get") else []
+                )
+                has_visible_pair = (
+                    nxt is not None and nxt.name == "p" and "toc-numbered-heading" in nxt_classes
+                )
+                m = re.search(r"toc-bm-(\d+)", " ".join(classes))
+                level_num = min(int(m.group(1)), 9) if m else 6
+                anchor_text = child.get_text(" ", strip=True)
+                # In-range → this level genuinely exists in the book's real
+                # TOC, so it gets a Word outline entry (numbered), same as
+                # the PDF's bookmark pane. Out-of-range (deeper than the
+                # real TOC ever goes) → an auto-detected heading with no
+                # TOC backing, so no outline entry — visible content only.
+                in_toc_range = max_toc_level < 0 or level_num <= max_toc_level
+                if has_visible_pair:
+                    # Source the visible text from the anchor (full,
+                    # correctly TOC-matched title) rather than the literal
+                    # on-page paragraph, which can be truncated — same
+                    # reasoning as before — but strip the number so the
+                    # numbering shows up ONLY in the outline, never in the
+                    # visible page content.
+                    visible_text = _docx_strip_number_prefix(anchor_text)
+                    if in_toc_range:
+                        _docx_add_invisible_heading(doc, anchor_text, level_num)
+                    _docx_add_visible_heading(doc, visible_text, level_num)
+                else:
+                    # Standalone anchor (an "implicit" TOC entry with no
+                    # visible text match on the page). Only add it to the
+                    # outline if it's genuinely within the real TOC's depth.
+                    if in_toc_range:
+                        _docx_add_invisible_heading(doc, anchor_text, level_num)
+                continue
+            if "toc-numbered-heading" in classes:
+                # Its title text was already emitted above (sourced from
+                # the paired anchor); this paragraph would just duplicate
+                # it with the shorter/rawer on-page wording, so skip it.
+                continue
+            if "chapter-heading" in classes:
+                _docx_add_chapter_heading(doc, child)
+                continue
+            _docx_add_body_paragraph(doc, child)
+            continue
+
+
+def _docx_setup_styles(doc) -> None:
+    """Configure page geometry + a justified RTL 'Shamela Body' style."""
+    section = doc.sections[0]
+    section.page_width = Cm(21.0)
+    section.page_height = Cm(29.7)
+    section.top_margin = Cm(1.3)
+    section.bottom_margin = Cm(1.5)
+    section.left_margin = Cm(1.5)
+    section.right_margin = Cm(1.5)
+    # section-level bidi so Word treats the whole page as RTL (margins mirror, etc.)
+    sectPr = section._sectPr
+    bidi = OxmlElement("w:bidi")
+    _oxml_insert_ordered(sectPr, bidi, "w:bidi", _SECTPR_TAG_SEQ)
+
+    normal = doc.styles["Normal"]
+    normal.font.name = _DOCX_FONT_BODY
+    normal.font.size = Pt(15)
+    normal.font.bold = True
+    rpr = normal.element.get_or_add_rPr()
+    rFonts = rpr.get_or_add_rFonts()
+    rFonts.set(qn("w:cs"), _DOCX_FONT_BODY)
+    _docx_style_set_bidi(normal)
+
+    body_style = doc.styles.add_style("Shamela Body", WD_STYLE_TYPE.PARAGRAPH)
+    body_style.base_style = normal
+    body_style.paragraph_format.space_after = Pt(4)
+    body_style.paragraph_format.line_spacing = 1.08
+    body_style.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    _docx_style_set_bidi(body_style)
+
+    # Belt-and-suspenders: every built-in Heading style Word ships with is
+    # LTR by default. Direct per-paragraph formatting (set on every heading
+    # we emit) already overrides this, but setting it at the style level too
+    # means nothing can slip through un-mirrored.
+    for lvl in range(1, 10):
+        try:
+            heading_style = doc.styles[f"Heading {lvl}"]
+        except KeyError:
+            continue
+        heading_style.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        _docx_style_set_bidi(heading_style)
+        hrpr = heading_style.element.get_or_add_rPr()
+        hFonts = hrpr.get_or_add_rFonts()
+        hFonts.set(qn("w:cs"), _DOCX_FONT_HEAD)
+
+
+def _docx_add_page_number_footer(doc) -> None:
+    section = doc.sections[0]
+    footer = section.footer
+    para = footer.paragraphs[0]
+    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _docx_set_bidi(para)
+    run = para.add_run("— ")
+    _docx_set_run_rtl_font(run, _DOCX_FONT_BODY)
+    fldChar1 = OxmlElement("w:fldChar")
+    fldChar1.set(qn("w:fldCharType"), "begin")
+    instrText = OxmlElement("w:instrText")
+    instrText.set(qn("xml:space"), "preserve")
+    instrText.text = "PAGE"
+    fldChar2 = OxmlElement("w:fldChar")
+    fldChar2.set(qn("w:fldCharType"), "end")
+    r = para.add_run()
+    r._r.append(fldChar1)
+    r._r.append(instrText)
+    r._r.append(fldChar2)
+    _docx_set_run_rtl_font(r, _DOCX_FONT_BODY)
+    run2 = para.add_run(" —")
+    _docx_set_run_rtl_font(run2, _DOCX_FONT_BODY)
+
+
+def _docx_add_page_number_header(doc) -> None:
+    """Small page-number field in the top-right corner of every page,
+    in addition to the centered one in the footer."""
+    section = doc.sections[0]
+    header = section.header
+    para = header.paragraphs[0]
+    para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # renders top-right in this doc's RTL layout
+    _docx_set_bidi(para)
+    fldChar1 = OxmlElement("w:fldChar")
+    fldChar1.set(qn("w:fldCharType"), "begin")
+    instrText = OxmlElement("w:instrText")
+    instrText.set(qn("xml:space"), "preserve")
+    instrText.text = "PAGE"
+    fldChar2 = OxmlElement("w:fldChar")
+    fldChar2.set(qn("w:fldCharType"), "end")
+    r = para.add_run()
+    r._r.append(fldChar1)
+    r._r.append(instrText)
+    r._r.append(fldChar2)
+    _docx_set_run_rtl_font(r, _DOCX_FONT_BODY)
+    r.font.size = Pt(9)
+    r.font.color.rgb = RGBColor.from_string("888888")
+
+
+def build_docx(
+    meta: dict,
+    author_info: dict,
+    pages_iter,
+    out_path: str,
+    volume_label: str | None = None,
+) -> None:
+    """Build a .docx from *pages_iter*, mirroring the PDF's cover, real Word
+    Heading styles (for native outline navigation), per-level heading
+    colors, hamesh footnote blocks, and colored inline spans.
+
+    Reuses _render_page_html for the actual content so heading/numbering
+    logic is identical to the PDF — this function only translates that
+    HTML fragment into docx paragraphs/runs.
+    """
+    if _docxlib is None:
+        print("  [!] python-docx not installed — DOCX skipped (pip install python-docx).")
+        return
+
+    doc = _docxlib.Document()
+    _docx_setup_styles(doc)
+    _docx_add_page_number_footer(doc)
+    _docx_add_page_number_header(doc)
+
+    # ── COVER ────────────────────────────────────────────────────────
+    title_p = doc.add_paragraph()
+    title_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    _docx_set_bidi(title_p)
+    _docx_add_run(
+        title_p,
+        "بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ",
+        font_name=_DOCX_FONT_HEAD,
+        size=13,
+        color_hex=_DOCX_GOLD,
+    )
+    doc.add_paragraph()
+
+    book_title_p = doc.add_paragraph()
+    book_title_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    _docx_set_bidi(book_title_p)
+    _docx_add_run(
+        book_title_p,
+        meta.get("title", "كتاب"),
+        font_name=_DOCX_FONT_HEAD,
+        size=28,
+        bold=True,
+        color_hex=_DOCX_INK,
+    )
+
+    if volume_label:
+        vol_p = doc.add_paragraph()
+        vol_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        _docx_set_bidi(vol_p)
+        _docx_add_run(
+            vol_p, f"الجزء {volume_label}", font_name=_DOCX_FONT_HEAD, size=14, color_hex=_DOCX_GOLD_L
+        )
+
+    doc.add_paragraph()
+    meta_rows = [
+        (label, meta[key])
+        for label, key in [
+            ("المؤلف", "author"),
+            ("الناشر", "publisher"),
+            ("الطبعة", "edition"),
+            ("عدد الأجزاء", "volumes"),
+        ]
+        if meta.get(key)
+    ]
+    if meta_rows:
+        table = doc.add_table(rows=len(meta_rows), cols=2)
+        table.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        for i, (label, value) in enumerate(meta_rows):
+            for cell, text, bold in (
+                (table.cell(i, 1), label, True),
+                (table.cell(i, 0), str(value), False),
+            ):
+                cp = cell.paragraphs[0]
+                cp.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                _docx_set_bidi(cp)
+                _docx_add_run(cp, text, font_name=_DOCX_FONT_BODY, size=11, bold=bold)
+
+    src_p = doc.add_paragraph()
+    src_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    _docx_set_bidi(src_p)
+    scraped_date = datetime.date.today().strftime("%Y-%m-%d")
+    _docx_add_run(
+        src_p,
+        f"المصدر: {meta.get('url', '')} | تاريخ التحميل: {scraped_date}",
+        font_name=_DOCX_FONT_BODY,
+        size=9,
+        color_hex="888888",
+    )
+    pending_page_break = True  # next major heading (bio or body) starts a fresh page
+
+    # ── AUTHOR BIO ───────────────────────────────────────────────────
+    if author_info and not author_info.get("error") and author_info.get("bio"):
+        bio_h = doc.add_heading(level=1)
+        _docx_page_break_before(bio_h)
+        pending_page_break = False
+        bio_h.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        _docx_set_bidi(bio_h)
+        _docx_add_run(bio_h, "ترجمة المؤلف", font_name=_DOCX_FONT_HEAD, size=14, bold=True, color_hex=_DOCX_TEAL)
+        for line in author_info["bio"].splitlines():
+            if line.strip():
+                bp = doc.add_paragraph()
+                bp.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                _docx_set_bidi(bp)
+                _docx_add_run(bp, line.strip(), font_name=_DOCX_FONT_BODY, size=11)
+        pending_page_break = True  # body text starts a fresh page after the bio
+
+    # ── BOOK TEXT ────────────────────────────────────────────────────
+    body_h = doc.add_heading(level=1)
+    if pending_page_break:
+        _docx_page_break_before(body_h)
+    body_h.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    _docx_set_bidi(body_h)
+    _docx_add_run(body_h, "نص الكتاب", font_name=_DOCX_FONT_HEAD, size=14, bold=True, color_hex=_DOCX_TEAL)
+
+    toc_flat = meta.get("toc_flat", [])
+    toc_by_page: dict = {}
+    max_toc_level = -1
+    for entry in toc_flat:
+        lvl = entry.get("level", 0)
+        if lvl > max_toc_level:
+            max_toc_level = lvl
+        pid = entry.get("page_id")
+        if pid is not None:
+            toc_by_page.setdefault(pid, []).append((entry.get("label", ""), lvl))
+
+    if volume_label is None:
+        vol_starts_list = sorted(meta.get("volume_start_pages", []))
+        vol_boundaries = set(vol_starts_list)
+        vol_labels_list = meta.get("volume_labels", [])
+    else:
+        vol_starts_list = []
+        vol_boundaries = set()
+        vol_labels_list = []
+    vol_num = [1]
+
+    if vol_starts_list and vol_labels_list:
+        vp = doc.add_heading(level=2)
+        vp.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        _docx_set_bidi(vp)
+        _docx_add_run(vp, f"الجزء {vol_labels_list[0]}", font_name=_DOCX_FONT_HEAD, size=14, bold=True, color_hex=_DOCX_GOLD)
+
+    first_page = True
+    n_pages = 0
+    for page in _ensure_resolved(meta, pages_iter):
+        pid = page.get("page_id")
+        if pid and pid in vol_boundaries and not first_page:
+            vol_label = (
+                vol_labels_list[vol_num[0]] if vol_labels_list else str(vol_num[0] + 1)
+            )
+            vp = doc.add_heading(level=2)
+            _docx_page_break_before(vp)
+            vp.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            _docx_set_bidi(vp)
+            _docx_add_run(vp, f"الجزء {vol_label}", font_name=_DOCX_FONT_HEAD, size=14, bold=True, color_hex=_DOCX_GOLD)
+            vol_num[0] += 1
+
+        frag, _ = _render_page_html(page, toc_by_page, vol_boundaries, vol_num, max_toc_level)
+        first_page = False
+        n_pages += 1
+        if not frag.strip():
+            continue
+        soup = BeautifulSoup(frag, "lxml")
+        _docx_emit_fragment(doc, soup.body, max_toc_level)
+
+    doc.save(out_path)
+    print(f"  [docx] saved → {out_path}  ({n_pages} pages)")
+
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 
 
@@ -3897,26 +4578,44 @@ def process_book(
     book_id = int(book_id)
     entry = manifest.book(book_id)
 
-    # ── --pdf_only: load cached data from disk, no network ─────────────
-    if args.pdf_only and entry.get("dir"):
+    # ── --pdf_only / --docx on an already-scraped book: rebuild output(s)
+    # from cached data on disk, no network. Without this, a book that was
+    # already marked "done" from a prior PDF-only run would get skipped
+    # entirely by the "already done" check below, even when --docx is
+    # asking for a format that was never actually built yet.
+    if (args.pdf_only or args.docx) and entry.get("dir") and not args.force:
         bd = Path(out_dir) / entry["dir"]
         meta = load_json(bd / "meta.json")
         author_info = load_json(bd / "author_info.json")
-        if meta and author_info is not None:
+        pages_path = bd / "pages.jsonl"
+        has_pages = pages_path.exists() and pages_path.stat().st_size > 0
+        if meta and author_info is not None and has_pages:
             book_dir = bd
             print(
                 f"[*] Using cached data for book {book_id} ({meta.get('title', '?')})"
             )
-            # Jump straight to heading resolution + PDF (skip network)
+            # Jump straight to heading resolution + output build (skip network)
             _build_book_outputs(
-                meta, author_info, book_dir, book_id, args, entry, manifest
+                meta, author_info, book_dir, book_id, args, entry, manifest,
+                need_scrape=False,
             )
             return
-        print(
-            f"  [!] Cached data incomplete for book {book_id}, falling back to network"
-        )
+        if meta and author_info is not None and not has_pages:
+            print(
+                f"  [!] --pdf_only/--docx requested for book {book_id} but no scraped "
+                f"page data found on disk — scraping first, then building output(s) ..."
+            )
+        else:
+            print(
+                f"  [!] Cached data incomplete for book {book_id}, falling back to network"
+            )
 
-    if entry.get("status") == "done" and not args.force and not args.pdf_only:
+    if (
+        entry.get("status") == "done"
+        and not args.force
+        and not args.pdf_only
+        and not args.docx
+    ):
         print(f"[skip] book {book_id} ({entry.get('title', '')}) — already done")
         return
 
@@ -3982,7 +4681,18 @@ def process_book(
         first_page = min(candidates)
 
     # ── scrape (resumable) ──────────────────────────────────────────────
-    if not args.pdf_only:
+    _pages_check_path = book_dir / "pages.jsonl"
+    _has_existing_pages = (
+        _pages_check_path.exists() and _pages_check_path.stat().st_size > 0
+    )
+    _rebuild_only = args.pdf_only or args.docx
+    need_scrape = not _rebuild_only or not _has_existing_pages
+    if _rebuild_only and not _has_existing_pages:
+        print(
+            f"  [!] --pdf_only/--docx requested but no scraped data found for "
+            f"book {book_id} yet — scraping now (one-time), then building output(s) ..."
+        )
+    if need_scrape:
         print(
             f"[*] Scraping pages for book {book_id} (starting at page_id={first_page}) ..."
         )
@@ -4010,7 +4720,10 @@ def process_book(
             )
             return
 
-    _build_book_outputs(meta, author_info, book_dir, book_id, args, entry, manifest)
+    _build_book_outputs(
+        meta, author_info, book_dir, book_id, args, entry, manifest,
+        need_scrape=need_scrape,
+    )
 
 
 def _build_book_outputs(
@@ -4021,6 +4734,7 @@ def _build_book_outputs(
     args,
     entry: dict,
     manifest: Manifest,
+    need_scrape: bool = True,
 ) -> None:
     """Heading resolution → combined JSON → PDF (shared by scrape and --pdf_only paths)."""
     pages_path = book_dir / "pages.jsonl"
@@ -4085,69 +4799,130 @@ def _build_book_outputs(
                 print(
                     f"  [!] --juz {juz_arg} out of range (1–{n_avail}), ignoring"
                 )
-        has_volumes = (
-            vol_pages
-            and vol_labels
-            and len(vol_pages) > 1
-            and not getattr(args, "single_pdf", False)
-        )
-        if has_volumes:
-            n_vols = len(vol_pages)
-            for vi in range(n_vols):
-                if juz_arg is not None and vi + 1 != juz_arg:
-                    continue
-                label = vol_labels[vi]
-                lo = vol_pages[vi]
-                hi = vol_pages[vi + 1] - 1 if vi + 1 < n_vols else "end"
-                vol_suffix = label.replace(" ", "_")
-                if not vol_suffix:
-                    vol_suffix = str(vi + 1).zfill(3)
-                pdf_name = f"book_{book_id}_{vol_suffix}.pdf"
-                pdf_path = book_dir / pdf_name
-                print(
-                    f"[*] Building PDF for book {book_id}, juz '{label}' ({lo}–{hi}) → {pdf_name} ..."
-                )
-                vol_iter = _pages_by_volume(
-                    iter_pages_jsonl(resolved_path), vol_pages, vi
-                )
-                vol_iter = _prefix_headings_by_juz(
-                    vol_iter, vol_pages, include_juz_prefix=False
-                )
+        # A PDF is built by default. --docx REPLACES the PDF build (no PDF)
+        # unless --also_pdf is explicitly passed to request both formats.
+        want_docx = getattr(args, "docx", False)
+        want_pdf = (not want_docx) or getattr(args, "also_pdf", False)
+
+        if want_pdf:
+            has_volumes = (
+                vol_pages
+                and vol_labels
+                and len(vol_pages) > 1
+                and not getattr(args, "single_pdf", False)
+            )
+            if has_volumes:
+                n_vols = len(vol_pages)
+                for vi in range(n_vols):
+                    if juz_arg is not None and vi + 1 != juz_arg:
+                        continue
+                    label = vol_labels[vi]
+                    lo = vol_pages[vi]
+                    hi = vol_pages[vi + 1] - 1 if vi + 1 < n_vols else "end"
+                    vol_suffix = label.replace(" ", "_")
+                    if not vol_suffix:
+                        vol_suffix = str(vi + 1).zfill(3)
+                    pdf_name = f"book_{book_id}_{vol_suffix}.pdf"
+                    pdf_path = book_dir / pdf_name
+                    print(
+                        f"[*] Building PDF for book {book_id}, juz '{label}' ({lo}–{hi}) → {pdf_name} ..."
+                    )
+                    vol_iter = _pages_by_volume(
+                        iter_pages_jsonl(resolved_path), vol_pages, vi
+                    )
+                    vol_iter = _prefix_headings_by_juz(
+                        vol_iter, vol_pages, include_juz_prefix=False
+                    )
+                    build_pdf(
+                        meta,
+                        author_info,
+                        vol_iter,
+                        str(pdf_path),
+                        flush_every=getattr(args, "flush_every", 50),
+                        volume_label=label,
+                        columns=getattr(args, "columns", 1),
+                        fast=getattr(args, "fast", False),
+                    )
+            else:
+                pdf_path = book_dir / f"book_{book_id}.pdf"
+                pages_iter = iter_pages_jsonl(resolved_path)
+                if vol_pages and len(vol_pages) > 1 and getattr(args, "single_pdf", False):
+                    if getattr(args, "no_juz_outline", False):
+                        print(
+                            f"[*] Building combined PDF for book {book_id} (plain, no juz outline) ..."
+                        )
+                    else:
+                        pages_iter = _prefix_headings_by_juz(pages_iter, vol_pages)
+                        print(
+                            f"[*] Building combined PDF for book {book_id} (with juz outline) ..."
+                        )
+                else:
+                    print(f"[*] Building PDF for book {book_id} ...")
                 build_pdf(
                     meta,
                     author_info,
-                    vol_iter,
+                    pages_iter,
                     str(pdf_path),
                     flush_every=getattr(args, "flush_every", 50),
-                    volume_label=label,
+                    columns=getattr(args, "columns", 1),
+                    fast=getattr(args, "fast", False),
                 )
-        else:
-            pdf_path = book_dir / f"book_{book_id}.pdf"
-            pages_iter = iter_pages_jsonl(resolved_path)
-            if vol_pages and len(vol_pages) > 1 and getattr(args, "single_pdf", False):
-                if getattr(args, "no_juz_outline", False):
-                    print(
-                        f"[*] Building combined PDF for book {book_id} (plain, no juz outline) ..."
+        elif want_docx:
+            print(f"[*] --docx given without --also_pdf → skipping PDF build for book {book_id}")
+
+        # ── DOCX (per-juz if volumes exist, otherwise single) ──────────────
+        # Gated independently by --single_docx, NOT by --single_pdf, so you
+        # can e.g. keep per-juz PDFs (via --also_pdf --single_pdf... ) while
+        # still getting one combined DOCX.
+        if want_docx:
+            docx_has_volumes = (
+                vol_pages
+                and vol_labels
+                and len(vol_pages) > 1
+                and not getattr(args, "single_docx", False)
+            )
+            if docx_has_volumes:
+                n_vols = len(vol_pages)
+                for vi in range(n_vols):
+                    if juz_arg is not None and vi + 1 != juz_arg:
+                        continue
+                    label = vol_labels[vi]
+                    vol_suffix = label.replace(" ", "_")
+                    if not vol_suffix:
+                        vol_suffix = str(vi + 1).zfill(3)
+                    docx_name = f"book_{book_id}_{vol_suffix}.docx"
+                    docx_path = book_dir / docx_name
+                    print(f"[*] Building DOCX for book {book_id}, juz '{label}' → {docx_name} ...")
+                    docx_vol_iter = _pages_by_volume(
+                        iter_pages_jsonl(resolved_path), vol_pages, vi
                     )
-                else:
-                    pages_iter = _prefix_headings_by_juz(pages_iter, vol_pages)
-                    print(
-                        f"[*] Building combined PDF for book {book_id} (with juz outline) ..."
+                    docx_vol_iter = _prefix_headings_by_juz(
+                        docx_vol_iter, vol_pages, include_juz_prefix=False
+                    )
+                    build_docx(
+                        meta, author_info, docx_vol_iter, str(docx_path), volume_label=label
                     )
             else:
-                print(f"[*] Building PDF for book {book_id} ...")
-            build_pdf(
-                meta,
-                author_info,
-                pages_iter,
-                str(pdf_path),
-                flush_every=getattr(args, "flush_every", 50),
-            )
+                docx_path = book_dir / f"book_{book_id}.docx"
+                docx_pages_iter = iter_pages_jsonl(resolved_path)
+                if vol_pages and len(vol_pages) > 1 and getattr(args, "single_docx", False):
+                    if getattr(args, "no_juz_outline", False):
+                        print(
+                            f"[*] Building combined DOCX for book {book_id} (plain, no juz outline) ..."
+                        )
+                    else:
+                        docx_pages_iter = _prefix_headings_by_juz(docx_pages_iter, vol_pages)
+                        print(
+                            f"[*] Building combined DOCX for book {book_id} (with juz outline) ..."
+                        )
+                else:
+                    print(f"[*] Building DOCX for book {book_id} ...")
+                build_docx(meta, author_info, docx_pages_iter, str(docx_path))
 
     # Only mark "done" when scraping was actually performed and completed.
-    # --pdf_only must never change the scraping status, so interrupted
-    # scrapes remain resumable on the next regular run.
-    if not args.pdf_only:
+    # --pdf_only must never change the scraping status on its own, unless we
+    # had to auto-scrape because no page data existed yet (need_scrape=True).
+    if need_scrape:
         if entry.get("status") != "paused":
             entry["status"] = "done"
         entry["updated_at"] = datetime.datetime.now().isoformat()
@@ -4283,28 +5058,60 @@ def main():
     )
 
     parser.add_argument(
-        "--json_only", action="store_true", help="Only scrape + save JSON, skip PDF"
+        "--json_only",
+        action="store_true",
+        help="Only scrape + save the raw page data, skip building any output "
+        "document (no PDF, no DOCX).",
     )
     parser.add_argument(
         "--pdf_only",
         action="store_true",
-        help="Rebuild PDF from already-scraped data, skip network page-scraping",
+        help="Rebuild output document(s) from already-scraped data on disk, "
+        "skip network page-scraping. (Despite the name, this governs "
+        "*scraping vs. rebuilding*, not which output format gets built — "
+        "combine with --docx to rebuild a DOCX only, no network.)",
+    )
+    parser.add_argument(
+        "--docx",
+        action="store_true",
+        help="Build a .docx instead of a PDF, with the same cover, native "
+        "Word Heading styles (for outline navigation), per-level heading "
+        "colors, and hamesh footnote blocks. By default this REPLACES the "
+        "PDF build — no PDF is produced. Pass --also_pdf too if you want "
+        "both. Requires `pip install python-docx`.",
+    )
+    parser.add_argument(
+        "--also_pdf",
+        action="store_true",
+        help="Only meaningful together with --docx: also build the PDF "
+        "alongside the DOCX (by default --docx alone builds DOCX only).",
     )
     parser.add_argument(
         "--single_pdf",
         action="store_true",
-        help="Generate a single combined PDF even when the book has ajza'/volumes",
+        help="Generate a single combined PDF even when the book has ajza'/volumes "
+        "(applies only when a PDF is actually being built — see --docx).",
+    )
+    parser.add_argument(
+        "--single_docx",
+        action="store_true",
+        help="Generate a single combined DOCX even when the book has ajza'/volumes "
+        "(applies only when --docx is set; independent of --single_pdf — you "
+        "can keep per-juz PDFs while still getting one combined DOCX, or vice "
+        "versa, via --also_pdf).",
     )
     parser.add_argument(
         "--no_juz_outline",
         action="store_true",
-        help="With --single_pdf: build combined PDF without juz numbering in headings (old-style)",
+        help="With --single_pdf and/or --single_docx: build the combined "
+        "output without juz numbering in headings (old-style).",
     )
     parser.add_argument(
         "--juz",
         type=int,
         default=None,
-        help="Generate PDF for a specific juz/volume only (1-based index)",
+        help="Generate output for a specific juz/volume only (1-based index). "
+        "Applies to whichever format(s) are being built.",
     )
     parser.add_argument(
         "--force",
@@ -4328,12 +5135,37 @@ def main():
         help="Print manifest status summary and exit (no scraping)",
     )
     parser.add_argument(
+        "--columns",
+        type=int,
+        choices=[1, 2],
+        default=1,
+        help="Number of text columns per PDF page for the book body "
+        "(1 = normal single-column, 2 = two-column newspaper-style layout). "
+        "Default 1.",
+    )
+    parser.add_argument(
         "--flush_every",
         type=int,
         default=50,
         help="Flush HTML buffer to disk every N pages during PDF build (lower = less RAM, default 50)",
     )
+    parser.add_argument(
+        "--fast",
+        action="store_true",
+        help="Drop kashida justification when rendering the PDF. Kashida "
+        "(Arabic letter-stretch justification) looks nicer but is a major "
+        "WeasyPrint speed sink — this can cut PDF build time drastically "
+        "on large books, at the cost of plain justify instead of kashida.",
+    )
     args = parser.parse_args()
+
+    if args.also_pdf and not args.docx:
+        print("[!] --also_pdf has no effect without --docx (a PDF is always "
+              "built unless --docx is given) — ignoring.")
+    if args.single_docx and not args.docx:
+        print("[!] --single_docx has no effect without --docx — ignoring.")
+    if args.docx and args.json_only:
+        print("[!] --json_only overrides --docx — no PDF or DOCX will be built.")
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
