@@ -23,10 +23,10 @@ Output formats
 ──────────────
   • PDF  — A4, ornate gold/teal Islamic cover, WeasyPrint-rendered.
            Per-juz splitting for multi-volume books (default).
-           Optional: --single_pdf, --columns 2 (two-column layout), --fast.
+           Optional: --single, --columns 2 (two-column layout), --fast.
   • DOCX — Native Word .docx with outline navigation, per-level heading
            colors, hamesh footnotes, RTL page layout.  Requires python-docx.
-           Optional: --single_docx, --also_pdf (build both formats).
+           Optional: --single, --docx (build DOCX alongside PDF).
 
 Core features
 ─────────────
@@ -69,7 +69,7 @@ Usage
     python shamela_scraper.py --book_id 12762 --docx
 
     # build both DOCX and PDF
-    python shamela_scraper.py --book_id 12762 --docx --also_pdf
+    python shamela_scraper.py --book_id 12762 --docx --pdf
 
     # faster concurrency (16 workers, shorter delay)
     python shamela_scraper.py --book_ids 12762 --workers 16 --delay 0.3
@@ -80,20 +80,20 @@ Usage
     # drop kashida justification for faster PDF rendering
     python shamela_scraper.py --book_id 12762 --fast
 
-    # single combined PDF even for multi-volume books
-    python shamela_scraper.py --book_id 12762 --single_pdf
+    # single combined output even for multi-volume books
+    python shamela_scraper.py --book_id 12762 --single
 
-    # single combined PDF without juz numbering in headings
-    python shamela_scraper.py --book_id 12762 --single_pdf --no_juz_outline
+    # single combined output without juz numbering in headings
+    python shamela_scraper.py --book_id 12762 --single --no_juz_outline
 
     # specific volume only (1-based)
     python shamela_scraper.py --book_id 12762 --juz 3
 
-    # single combined DOCX for multi-volume books (PDF untouched)
-    python shamela_scraper.py --book_id 12762 --single_docx
+    # DOCX only (no PDF)
+    python shamela_scraper.py --book_id 12762 --docx --no-pdf
 
-    # per-juz PDFs + combined DOCX
-    python shamela_scraper.py --book_id 12762 --also_pdf --single_docx
+    # both PDF and DOCX
+    python shamela_scraper.py --book_id 12762 --docx --pdf
 
     # JSON only — no PDF/DOCX output
     python shamela_scraper.py --book_id 12762 --json_only
@@ -4774,7 +4774,8 @@ def process_book(
     # already marked "done" from a prior PDF-only run would get skipped
     # entirely by the "already done" check below, even when --docx is
     # asking for a format that was never actually built yet.
-    if (args.pdf_only or args.docx) and entry.get("dir") and not args.force:
+    # Rebuild from cached data if we can skip network (--pdf_only, --docx, --override)
+    if (args.pdf_only or args.docx or args.override) and entry.get("dir") and not args.force:
         bd = Path(out_dir) / entry["dir"]
         meta = load_json(bd / "meta.json")
         author_info = load_json(bd / "author_info.json")
@@ -4801,9 +4802,23 @@ def process_book(
                 f"  [!] Cached data incomplete for book {book_id}, falling back to network"
             )
 
+    # --override: when absent (default), skip if output files already exist.
+    if not getattr(args, "override", False) and not args.force:
+        prev_dir = entry.get("dir")
+        if prev_dir:
+            bd = Path(out_dir) / prev_dir
+            out_patterns = ["*.pdf", "*.docx"]
+            if bd.exists() and any(bd.glob(p) for p in out_patterns):
+                print(
+                    f"[skip] book {book_id} ({entry.get('title', '')}) "
+                    f"— output already exists (pass --override to rebuild)"
+                )
+                return
+
     if (
         entry.get("status") == "done"
         and not args.force
+        and not args.override
         and not args.pdf_only
         and not args.docx
     ):
@@ -4993,17 +5008,18 @@ def _build_book_outputs(
                 print(
                     f"  [!] --juz {juz_arg} out of range (1–{n_avail}), ignoring"
                 )
-        # A PDF is built by default. --docx REPLACES the PDF build (no PDF)
-        # unless --also_pdf is explicitly passed to request both formats.
+        # PDF and/or DOCX are controlled independently.
+        # --pdf is on by default, --no-pdf to skip.
+        # --docx builds DOCX alongside PDF (or alone with --no-pdf).
         want_docx = getattr(args, "docx", False)
-        want_pdf = (not want_docx) or getattr(args, "also_pdf", False)
+        want_pdf = getattr(args, "pdf", True)
 
         if want_pdf:
             has_volumes = (
                 vol_pages
                 and vol_labels
                 and len(vol_pages) > 1
-                and not getattr(args, "single_pdf", False)
+                and not getattr(args, "single", False)
             )
             if has_volumes:
                 n_vols = len(vol_pages)
@@ -5040,7 +5056,8 @@ def _build_book_outputs(
             else:
                 pdf_path = book_dir / f"book_{book_id}.pdf"
                 pages_iter = iter_pages_jsonl(resolved_path)
-                if vol_pages and len(vol_pages) > 1 and getattr(args, "single_pdf", False):
+                single = getattr(args, "single", False)
+                if vol_pages and len(vol_pages) > 1 and single:
                     if getattr(args, "no_juz_outline", False):
                         print(
                             f"[*] Building combined PDF for book {book_id} (plain, no juz outline) ..."
@@ -5061,19 +5078,14 @@ def _build_book_outputs(
                     columns=getattr(args, "columns", 1),
                     fast=getattr(args, "fast", False),
                 )
-        elif want_docx:
-            print(f"[*] --docx given without --also_pdf → skipping PDF build for book {book_id}")
 
         # ── DOCX (per-juz if volumes exist, otherwise single) ──────────────
-        # Gated independently by --single_docx, NOT by --single_pdf, so you
-        # can e.g. keep per-juz PDFs (via --also_pdf --single_pdf... ) while
-        # still getting one combined DOCX.
         if want_docx:
             docx_has_volumes = (
                 vol_pages
                 and vol_labels
                 and len(vol_pages) > 1
-                and not getattr(args, "single_docx", False)
+                and not getattr(args, "single", False)
             )
             if docx_has_volumes:
                 n_vols = len(vol_pages)
@@ -5099,7 +5111,8 @@ def _build_book_outputs(
             else:
                 docx_path = book_dir / f"book_{book_id}.docx"
                 docx_pages_iter = iter_pages_jsonl(resolved_path)
-                if vol_pages and len(vol_pages) > 1 and getattr(args, "single_docx", False):
+                docx_combined = getattr(args, "single", False)
+                if vol_pages and len(vol_pages) > 1 and docx_combined:
                     if getattr(args, "no_juz_outline", False):
                         print(
                             f"[*] Building combined DOCX for book {book_id} (plain, no juz outline) ..."
@@ -5266,47 +5279,40 @@ def main():
         "Generates book_<id>.json in the book directory.",
     )
     parser.add_argument(
+        "--pdf",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        dest="pdf",
+        help="Generate PDF output (default: on). Use --no-pdf to skip PDF "
+        "when building only DOCX.",
+    )
+    parser.add_argument(
         "--pdf_only",
         action="store_true",
         help="Rebuild output document(s) from already-scraped data on disk, "
-        "skip network page-scraping. (Despite the name, this governs "
-        "*scraping vs. rebuilding*, not which output format gets built — "
-        "combine with --docx to rebuild a DOCX only, no network.)",
+        "skip network page-scraping. Combine with --docx to rebuild a DOCX "
+        "only, no network.",
     )
     parser.add_argument(
         "--docx",
         action="store_true",
-        help="Build a .docx instead of a PDF, with the same cover, native "
-        "Word Heading styles (for outline navigation), per-level heading "
-        "colors, and hamesh footnote blocks. By default this REPLACES the "
-        "PDF build — no PDF is produced. Pass --also_pdf too if you want "
-        "both. Requires `pip install python-docx`.",
+        help="Build a .docx with cover, native Word Heading styles for "
+        "outline navigation, per-level heading colors, and hamesh footnote "
+        "blocks. Combine with --pdf to build both formats. "
+        "Requires `pip install python-docx`.",
     )
     parser.add_argument(
-        "--also_pdf",
+        "--single",
         action="store_true",
-        help="Only meaningful together with --docx: also build the PDF "
-        "alongside the DOCX (by default --docx alone builds DOCX only).",
-    )
-    parser.add_argument(
-        "--single_pdf",
-        action="store_true",
-        help="Generate a single combined PDF even when the book has ajza'/volumes "
-        "(applies only when a PDF is actually being built — see --docx).",
-    )
-    parser.add_argument(
-        "--single_docx",
-        action="store_true",
-        help="Generate a single combined DOCX even when the book has ajza'/volumes "
-        "(applies only when --docx is set; independent of --single_pdf — you "
-        "can keep per-juz PDFs while still getting one combined DOCX, or vice "
-        "versa, via --also_pdf).",
+        dest="single",
+        help="Single combined file (PDF and/or DOCX) even when the book has "
+        "ajza'/volumes. Applies to whichever format(s) are being built.",
     )
     parser.add_argument(
         "--no_juz_outline",
         action="store_true",
-        help="With --single_pdf and/or --single_docx: build the combined "
-        "output without juz numbering in headings (old-style).",
+        help="With --single: build the combined output without juz "
+        "numbering in headings (old-style).",
     )
     parser.add_argument(
         "--juz",
@@ -5319,6 +5325,13 @@ def main():
         "--force",
         action="store_true",
         help="Re-scrape books even if already marked done",
+    )
+    parser.add_argument(
+        "--override",
+        action="store_true",
+        default=False,
+        help="Process books even if output files already exist on disk. "
+        "By default, books whose output already exists are skipped.",
     )
     parser.add_argument(
         "--refresh_categories",
@@ -5378,11 +5391,6 @@ def main():
     load_style_config(style_path)
     print(f"[*] Style config loaded{' from ' + style_path if style_path else ' (defaults)'}")
 
-    if args.also_pdf and not args.docx:
-        print("[!] --also_pdf has no effect without --docx (a PDF is always "
-              "built unless --docx is given) — ignoring.")
-    if args.single_docx and not args.docx:
-        print("[!] --single_docx has no effect without --docx — ignoring.")
     if args.docx and args.json_only:
         print("[!] --json_only overrides --docx — no PDF or DOCX will be built.")
 
