@@ -4599,7 +4599,15 @@ def _md_emit_line(f, container, max_toc_level: int = -1) -> None:
                 in_toc_range = max_toc_level < 0 or level_num <= max_toc_level
                 if not in_toc_range:
                     continue
-                heading_text = child.get_text(" ", strip=True)
+                if has_visible_pair:
+                    heading_text = nxt.get_text(" ", strip=True)
+                    for _lvl in range(10):
+                        _s = _HEADING_SHAPES.get(_lvl, "")
+                        if _s and heading_text.startswith(_s):
+                            heading_text = heading_text[len(_s):].strip()
+                            break
+                else:
+                    heading_text = child.get_text(" ", strip=True)
                 shape = _HEADING_SHAPES.get(level_num, "")
                 shape_str = f"{shape} " if shape else ""
                 f.write(f"{'#' * (level_num + 1)} {shape_str}{heading_text}\n\n")
