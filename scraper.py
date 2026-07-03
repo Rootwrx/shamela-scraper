@@ -2490,7 +2490,7 @@ def _build_html_css(meta: dict, columns: int = 1, fast: bool = False) -> str:
     .hamesh::before {{
         content: "";
         display: block;
-        width: 3.5cm;
+        width: 2cm;
         border-top: 1px dashed #999;
         margin-bottom: 0.5em;
     }}
@@ -4361,6 +4361,8 @@ def _docx_add_hamesh(doc, div_tag) -> None:
     rule.paragraph_format.space_before = Pt(6)
     rule.paragraph_format.space_after = Pt(0)
     rule.paragraph_format.line_spacing = Pt(1)
+    rule.paragraph_format.left_indent = Cm(3)
+    rule.paragraph_format.right_indent = Cm(3)
     pPr = rule._p.get_or_add_pPr()
     pBdr = OxmlElement("w:pBdr")
     top = OxmlElement("w:top")
@@ -4796,7 +4798,7 @@ def build_docx(
     doc = _docxlib.Document()
     _docx_setup_styles(doc)
     _docx_add_page_number_footer(doc)
-    _docx_add_page_number_header(doc)
+    # header page number removed per user request (only footer remains)
 
     # ── COVER ────────────────────────────────────────────────────────
     title_p = doc.add_paragraph()
