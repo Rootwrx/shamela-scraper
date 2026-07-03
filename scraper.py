@@ -2117,16 +2117,7 @@ def _build_html_css(meta: dict, columns: int = 1, fast: bool = False) -> str:
             padding-left: 0.5em;
         }}
 
-        @top-center {{
-            content: string(chapter-breadcrumb);
-            font-family: {font_body};
-            font-size: 12pt;
-            font-weight: 500;
-            color: {GOLD_L};
-            direction: rtl;
-            text-align: right;
-            padding: 0 0 0 3em;
-        }}
+        @top-center {{ content: none; }}
 
         @top-right {{ content: none; }}
 
@@ -2499,7 +2490,7 @@ def _build_html_css(meta: dict, columns: int = 1, fast: bool = False) -> str:
     .hamesh::before {{
         content: "";
         display: block;
-        width: 2cm;
+        width: 3.5cm;
         border-top: 1px dashed #999;
         margin-bottom: 0.5em;
     }}
@@ -3083,7 +3074,7 @@ def resolve_book_headings(meta: dict, pages_iter):
         if page_toc_new:
             labels = [l for l, _, _, _, _ in page_toc_new]
             numbers = [n for _, _, n, _, _ in page_toc_new]
-            page["toc_breadcrumb"] = " • ".join(labels[-3:])
+            page["toc_breadcrumb"] = " • ".join(labels)
             page["toc_number"] = (
                 f"{numbers[0]}-{numbers[-1]}" if len(numbers) > 1 else numbers[0]
             )
@@ -3558,7 +3549,7 @@ def _render_page_html(
     if page_breadcrumb:
         parts.append(
             f'<div class="bm-setter" '
-            f'style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;font-size:0;string-set:chapter-breadcrumb content()">'
+            f'style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;font-size:0;string-set:chapter-title content()">'
             f"{_e(page_breadcrumb)}</div>\n"
         )
     if page_toc_number:
@@ -4370,8 +4361,6 @@ def _docx_add_hamesh(doc, div_tag) -> None:
     rule.paragraph_format.space_before = Pt(6)
     rule.paragraph_format.space_after = Pt(0)
     rule.paragraph_format.line_spacing = Pt(1)
-    rule.paragraph_format.left_indent = Cm(3)
-    rule.paragraph_format.right_indent = Cm(3)
     pPr = rule._p.get_or_add_pPr()
     pBdr = OxmlElement("w:pBdr")
     top = OxmlElement("w:top")
@@ -4807,7 +4796,7 @@ def build_docx(
     doc = _docxlib.Document()
     _docx_setup_styles(doc)
     _docx_add_page_number_footer(doc)
-    # header page number removed per user request (only footer remains)
+    _docx_add_page_number_header(doc)
 
     # ── COVER ────────────────────────────────────────────────────────
     title_p = doc.add_paragraph()
