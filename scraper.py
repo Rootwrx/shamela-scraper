@@ -2490,7 +2490,7 @@ def _build_html_css(meta: dict, columns: int = 1, fast: bool = False) -> str:
     .hamesh::before {{
         content: "";
         display: block;
-        width: 2cm;
+        width: 2.8cm;
         border-top: 1px dashed #999;
         margin-bottom: 0.5em;
     }}
