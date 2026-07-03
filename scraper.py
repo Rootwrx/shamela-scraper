@@ -1931,7 +1931,7 @@ def _build_html_css(meta: dict, columns: int = 1, fast: bool = False) -> str:
     import datetime as _dt  # noqa: F401 — kept for callers that need it
 
     font_body = '"Scheherazade New", "Noto Naskh Arabic", "Amiri Quran", "Amiri", serif'
-    font_head = '"Noto Kufi Arabic", "Scheherazade New", "Amiri", serif'
+    font_head = '"Scheherazade New", "Noto Naskh Arabic", "Amiri Quran", "Amiri", serif'
 
     toc_flat = meta.get("toc_flat", [])
     max_toc_level = -1
@@ -2266,7 +2266,7 @@ def _build_html_css(meta: dict, columns: int = 1, fast: bool = False) -> str:
 
     h3 {{
         font-family: {font_head};
-        font-size: 15pt;
+        font-size: 17pt;
         font-weight: 800;
         color: {TEAL};
         border-right: 5px solid {GOLD};
@@ -2278,7 +2278,7 @@ def _build_html_css(meta: dict, columns: int = 1, fast: bool = False) -> str:
     /* Inline chapter heading from scraped <p class="b"> or <p class="head"> */
     .chapter-heading {{
         font-family: {font_head};
-        font-size: 16pt;
+        font-size: 17pt;
         font-weight: 900;
         color: {RUST};
         text-align: center;
@@ -2308,7 +2308,7 @@ def _build_html_css(meta: dict, columns: int = 1, fast: bool = False) -> str:
        ═══════════════════════════════════════════════════════ */
     .toc-numbered-heading {{
         font-family: {font_body};
-        font-size: 16pt;
+        font-size: 17pt;
         font-weight: 700;
         margin: 0.25em 0 0.15em 0;
         padding: 0;
@@ -2328,35 +2328,35 @@ def _build_html_css(meta: dict, columns: int = 1, fast: bool = False) -> str:
        They emit a .toc-bookmark-anchor so the PDF outline entry exists
        without any visible text. No CSS needed here. */
     .toc-numbered-heading.toc-nh-2 {{
-        font-size: 16pt;
+        font-size: 17pt;
         color: {TEAL};
     }}
     .toc-numbered-heading.toc-nh-3 {{
-        font-size: 16pt;
+        font-size: 17pt;
         color: {SEPIA};
     }}
     .toc-numbered-heading.toc-nh-4 {{
-        font-size: 16pt;
+        font-size: 17pt;
         color: #2d6a4f;
     }}
     .toc-numbered-heading.toc-nh-5 {{
-        font-size: 16pt;
+        font-size: 17pt;
         color: #6a0dad;
     }}
     .toc-numbered-heading.toc-nh-6 {{
-        font-size: 16pt;
+        font-size: 17pt;
         color: #8b4513;
     }}
     .toc-numbered-heading.toc-nh-7 {{
-        font-size: 16pt;
+        font-size: 17pt;
         color: #4a4a4a;
     }}
     .toc-numbered-heading.toc-nh-8 {{
-        font-size: 16pt;
+        font-size: 17pt;
         color: #2e6b8a;
     }}
     .toc-numbered-heading.toc-nh-9 {{
-        font-size: 16pt;
+        font-size: 17pt;
         color: #555;
     }}
     /* Auto-detected bracket headings — italic */
@@ -3969,7 +3969,7 @@ def build_pdf(
 # not two competing implementations.
 
 _DOCX_FONT_BODY = "Scheherazade New"
-_DOCX_FONT_HEAD = "Noto Kufi Arabic"
+_DOCX_FONT_HEAD = "Scheherazade New"
 
 # Same Islamic-gold palette + per-level heading colors as the PDF CSS.
 _DOCX_GOLD = "B8860B"
@@ -3980,16 +3980,16 @@ _DOCX_INK = "1A1008"
 _DOCX_SEPIA = "5C3D1A"
 
 _DOCX_LEVEL_COLORS = {
-    0: (_DOCX_GOLD_L, 16),
-    1: (_DOCX_RUST, 15),
-    2: (_DOCX_TEAL, 14),
-    3: (_DOCX_SEPIA, 13),
-    4: ("2D6A4F", 13),
-    5: ("6A0DAD", 13),
-    6: ("8B4513", 13),
-    7: ("4A4A4A", 13),
-    8: ("2E6B8A", 13),
-    9: ("555555", 13),
+    0: (_DOCX_GOLD_L, 19),
+    1: (_DOCX_RUST, 18),
+    2: (_DOCX_TEAL, 17),
+    3: (_DOCX_SEPIA, 16),
+    4: ("2D6A4F", 16),
+    5: ("6A0DAD", 16),
+    6: ("8B4513", 16),
+    7: ("4A4A4A", 16),
+    8: ("2E6B8A", 16),
+    9: ("555555", 16),
 }
 
 
@@ -4139,7 +4139,7 @@ def _docx_add_chapter_heading(doc, p_tag) -> None:
     para.paragraph_format.space_after = Pt(6)
     text = p_tag.get_text(" ", strip=True)
     _docx_add_run(
-        para, text, font_name=_DOCX_FONT_HEAD, size=14, bold=True, color_hex=_DOCX_RUST
+        para, text, font_name=_DOCX_FONT_HEAD, size=17, bold=True, color_hex=_DOCX_RUST
     )
 
 
@@ -4457,7 +4457,7 @@ def build_docx(
         vol_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
         _docx_set_bidi(vol_p)
         _docx_add_run(
-            vol_p, f"الجزء {volume_label}", font_name=_DOCX_FONT_HEAD, size=14, color_hex=_DOCX_GOLD_L
+            vol_p, f"الجزء {volume_label}", font_name=_DOCX_FONT_HEAD, size=17, color_hex=_DOCX_GOLD_L
         )
 
     doc.add_paragraph()
@@ -4504,13 +4504,13 @@ def build_docx(
         pending_page_break = False
         bio_h.alignment = WD_ALIGN_PARAGRAPH.LEFT
         _docx_set_bidi(bio_h)
-        _docx_add_run(bio_h, "ترجمة المؤلف", font_name=_DOCX_FONT_HEAD, size=14, bold=True, color_hex=_DOCX_TEAL)
+        _docx_add_run(bio_h, "ترجمة المؤلف", font_name=_DOCX_FONT_HEAD, size=18, bold=True, color_hex=_DOCX_TEAL)
         for line in author_info["bio"].splitlines():
             if line.strip():
                 bp = doc.add_paragraph()
                 bp.alignment = WD_ALIGN_PARAGRAPH.LEFT
                 _docx_set_bidi(bp)
-                _docx_add_run(bp, line.strip(), font_name=_DOCX_FONT_BODY, size=11)
+                _docx_add_run(bp, line.strip(), font_name=_DOCX_FONT_BODY, size=15)
         pending_page_break = True  # body text starts a fresh page after the bio
 
     # ── BOOK TEXT ────────────────────────────────────────────────────
@@ -4519,7 +4519,7 @@ def build_docx(
         _docx_page_break_before(body_h)
     body_h.alignment = WD_ALIGN_PARAGRAPH.LEFT
     _docx_set_bidi(body_h)
-    _docx_add_run(body_h, "نص الكتاب", font_name=_DOCX_FONT_HEAD, size=14, bold=True, color_hex=_DOCX_TEAL)
+    _docx_add_run(body_h, "نص الكتاب", font_name=_DOCX_FONT_HEAD, size=18, bold=True, color_hex=_DOCX_TEAL)
 
     toc_flat = meta.get("toc_flat", [])
     toc_by_page: dict = {}
@@ -4546,7 +4546,7 @@ def build_docx(
         vp = doc.add_heading(level=2)
         vp.alignment = WD_ALIGN_PARAGRAPH.LEFT
         _docx_set_bidi(vp)
-        _docx_add_run(vp, f"الجزء {vol_labels_list[0]}", font_name=_DOCX_FONT_HEAD, size=14, bold=True, color_hex=_DOCX_GOLD)
+        _docx_add_run(vp, f"الجزء {vol_labels_list[0]}", font_name=_DOCX_FONT_HEAD, size=17, bold=True, color_hex=_DOCX_GOLD)
 
     first_page = True
     n_pages = 0
@@ -4560,7 +4560,7 @@ def build_docx(
             _docx_page_break_before(vp)
             vp.alignment = WD_ALIGN_PARAGRAPH.LEFT
             _docx_set_bidi(vp)
-            _docx_add_run(vp, f"الجزء {vol_label}", font_name=_DOCX_FONT_HEAD, size=14, bold=True, color_hex=_DOCX_GOLD)
+            _docx_add_run(vp, f"الجزء {vol_label}", font_name=_DOCX_FONT_HEAD, size=17, bold=True, color_hex=_DOCX_GOLD)
             vol_num[0] += 1
 
         frag, _ = _render_page_html(page, toc_by_page, vol_boundaries, vol_num, max_toc_level)
