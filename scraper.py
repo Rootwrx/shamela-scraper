@@ -4530,7 +4530,7 @@ def _docx_add_page_number_header(doc) -> None:
     section = doc.sections[0]
     header = section.header
     para = header.paragraphs[0]
-    para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # renders top-right in this doc's RTL layout
+    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # renders top-left in this doc's RTL layout
     _docx_set_bidi(para)
     fldChar1 = OxmlElement("w:fldChar")
     fldChar1.set(qn("w:fldCharType"), "begin")
