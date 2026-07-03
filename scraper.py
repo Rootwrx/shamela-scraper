@@ -2117,16 +2117,7 @@ def _build_html_css(meta: dict, columns: int = 1, fast: bool = False) -> str:
             padding-left: 0.5em;
         }}
 
-        @top-center {{
-            content: string(chapter-breadcrumb);
-            font-family: {font_body};
-            font-size: 12pt;
-            font-weight: 500;
-            color: {GOLD_L};
-            direction: rtl;
-            text-align: right;
-            padding: 0 0 0 3em;
-        }}
+        @top-center {{ content: none; }}
 
         @top-right {{ content: none; }}
 
@@ -3083,7 +3074,7 @@ def resolve_book_headings(meta: dict, pages_iter):
         if page_toc_new:
             labels = [l for l, _, _, _, _ in page_toc_new]
             numbers = [n for _, _, n, _, _ in page_toc_new]
-            page["toc_breadcrumb"] = " • ".join(labels[-3:])
+            page["toc_breadcrumb"] = " • ".join(labels)
             page["toc_number"] = (
                 f"{numbers[0]}-{numbers[-1]}" if len(numbers) > 1 else numbers[0]
             )
@@ -3558,7 +3549,7 @@ def _render_page_html(
     if page_breadcrumb:
         parts.append(
             f'<div class="bm-setter" '
-            f'style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;font-size:0;string-set:chapter-breadcrumb content()">'
+            f'style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;font-size:0;string-set:chapter-title content()">'
             f"{_e(page_breadcrumb)}</div>\n"
         )
     if page_toc_number:
