@@ -282,6 +282,45 @@ The scraper writes each page to `pages.jsonl` immediately after fetching it. If 
 
 Progress is self-healing: on resume, the script scans `pages.jsonl` on disk and uses it as the source of truth, even if the checkpoint file (`progress.json`) was corrupted or lagging behind.
 
+## Implicit headings (missing titles)
+
+Some TOC entries never appear as visible headings in the book text — the author refers to a section by number (e.g. "4.3. دلالة الألفاظ على أنفسها") but skips a printed heading line. These are called **implicit headings**.
+
+### Detection
+
+During heading resolution, implicit entries are logged and saved to a dedicated file:
+
+```
+<book_dir>/implicits.json
+```
+
+Example contents:
+
+```json
+[
+  {"page": 15, "number": "4.3", "label": "دلالة الألفاظ على أنفسها"},
+  {"page": 21, "number": "4.4", "label": "إطلاق الاسم على الصفة"},
+  {"page": 22, "number": "4.5", "label": "إقحام لفظة «اسم» في الكلام"}
+]
+```
+
+Each entry contains:
+- `page` — the Shamela page ID where the heading should appear
+- `number` — the TOC heading number (e.g. `4.3`)
+- `label` — the heading text
+
+### How to fix
+
+Implicit headings have **no number in the content text** — the numbering (`4.3`, `4.4`, …) is auto-generated from the TOC hierarchy, not from the text itself. When fixing, you supply both the number and the label.
+
+Two approaches:
+
+**1. Edit the DOCX file directly** — Open the `.docx` in Word/WPS/LibreOffice, navigate to the page, type the heading where it belongs (paragraph break or mid-paragraph — your judgment). Re-upload or redistribute the edited file. No re-run needed.
+
+**2. Edit the source HTML + rebuild** — Find the corresponding Shamela page file in the book directory, insert a heading tag like `<h3>4.3. دلالة الألفاظ على أنفسها</h3>` at the correct position, then re-run with `--docx --pdf_only` to regenerate from your edits.
+
+Both methods require human judgment — `implicits.json` only tells you *what* is missing and *on which page*, not *where on that page*. The insertion point could be inside a paragraph, after a specific word, etc., so the script never auto-injects.
+
 ## Cloudflare bypass
 
 If shamela.ws returns 403 errors, you may need to pass a Cloudflare clearance cookie:

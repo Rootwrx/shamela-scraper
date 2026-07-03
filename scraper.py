@@ -3136,10 +3136,23 @@ def materialize_resolved_pages(
     meta: dict, pages_path: Path, resolved_path: Path
 ) -> int:
     count = 0
+    all_implicits: list[dict] = []
     with open(resolved_path, "w", encoding="utf-8") as out_fh:
         for page in resolve_book_headings(meta, iter_pages_jsonl(pages_path)):
             out_fh.write(_fast_json(page, indent=False) + "\n")
             count += 1
+            pid = page.get("url_page_id") or page.get("page_id")
+            for u in (page.get("unanchored_toc_entries") or []):
+                all_implicits.append({
+                    "page": pid,
+                    "number": u["number"],
+                    "label": u["label"],
+                })
+    if all_implicits:
+        implicits_path = resolved_path.with_name("implicits.json")
+        with open(implicits_path, "w", encoding="utf-8") as f:
+            json.dump(all_implicits, f, ensure_ascii=False, indent=2)
+        print(f"    → {len(all_implicits)} implicit headings saved → {implicits_path}")
     return count
 
 
