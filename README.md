@@ -11,7 +11,7 @@ Scrape books from [shamela.ws](https://shamela.ws) — the largest free Islamic 
 - **Beautiful PDF output** — ornate cover page, Islamic gold palette, A4 format, WeasyPrint-powered
 - **DOCX output** — native Word `.docx` with outline navigation, per-level heading colors, hamesh footnotes, RTL page layout
 - **Per-juz PDFs/DOCX** — books with ajza'/volumes are automatically split into separate files (`book_{id}_{label}.pdf` / `.docx`), each with its own cover showing `الجزء {label}`
-- **Single combined output** — use `--single_pdf` / `--single_docx` for one combined file when volumes exist; headings are prefixed with the juz number (e.g. `2.1`, `2.2` for juz 2)
+- **Single combined output** — use `--single` for one combined file when volumes exist; headings are prefixed with the juz number (e.g. `2.1`, `2.2` for juz 2)
 - **Multi-column layout** — `--columns 2` for two-column newspaper-style PDF text layout
 - **Fast mode** — `--fast` drops kashida justification for significantly faster PDF rendering
 - **Structured output tree** — organized by category → author → book
@@ -124,13 +124,13 @@ python scraper.py --category_ids 13,33,40
 python scraper.py --category_ids 13 --book_ids 667 --out_dir ./library
 ```
 
-### Generate single combined PDF (even when ajza' exist)
+### Generate single combined output (even when ajza' exist)
 
 ```bash
-python scraper.py --book_id 30186 --single_pdf
+python scraper.py --book_id 30186 --single
 ```
 
-Produces one PDF (`book_30186.pdf`) with:
+Produces one file (`book_30186.pdf` and/or `book_30186.docx`) with:
 - Red inline headings (`الجزء 2`) as volume dividers within the text
 - Heading numbering prefixed and reset per juz (e.g. `2.1`, `2.2` for juz 2)
 - Juz 1 label shown before first content, no splash page
@@ -138,33 +138,33 @@ Produces one PDF (`book_30186.pdf`) with:
 To suppress the juz prefix in headings (old plain style):
 
 ```bash
-python scraper.py --book_id 30186 --single_pdf --no_juz_outline
+python scraper.py --book_id 30186 --single --no_juz_outline
 ```
 
 ### Build DOCX output
 
-Generate a `.docx` instead of a PDF:
+Generate a `.docx` alongside the PDF:
 
 ```bash
 python scraper.py --book_id 12762 --docx
 ```
 
+Build DOCX only (skip PDF):
+
+```bash
+python scraper.py --book_id 12762 --docx --no-pdf
+```
+
 Build both formats:
 
 ```bash
-python scraper.py --book_id 12762 --docx --also_pdf
+python scraper.py --book_id 12762 --docx --pdf
 ```
 
-Single combined DOCX for multi-volume books:
+Single combined DOCX for multi-volume books (uses `--single` which applies to whichever format is being built):
 
 ```bash
-python scraper.py --book_id 12762 --docx --single_docx
-```
-
-Per-juz PDFs + single combined DOCX:
-
-```bash
-python scraper.py --book_id 12762 --also_pdf --single_docx
+python scraper.py --book_id 12762 --docx --single
 ```
 
 ### Two-column PDF layout
@@ -256,13 +256,13 @@ python scraper.py --book_ids 12762,667 --workers 16 --delay 0.3
 | `--user-agent` / `--ua` | — | Browser User-Agent matching the `cf_clearance` source |
 | `--json` | `False` | Save a combined `book_<id>.json` (meta + TOC + all pages with resolved headings) alongside other outputs |
 | `--pdf_only` | `False` | Rebuild output from cached data only (no network) |
-| `--docx` | `False` | Build DOCX instead of PDF (requires python-docx) |
-| `--also_pdf` | `False` | With `--docx`: build PDF alongside DOCX |
-| `--single_pdf` | `False` | Single combined PDF even when ajza' exist; headings include juz prefix with per-juz reset |
-| `--single_docx` | `False` | Single combined DOCX even when ajza' exist (independent of `--single_pdf`) |
-| `--no_juz_outline` | `False` | With `--single_pdf`/`--single_docx`: skip juz numbering in headings |
+| `--pdf` | `True` | Generate PDF output (use `--no-pdf` to disable) |
+| `--docx` | `False` | Build DOCX alongside PDF. Combine with `--no-pdf` for DOCX-only |
+| `--single` | `False` | Single combined file (PDF and/or DOCX) even when ajza'/volumes exist |
+| `--no_juz_outline` | `False` | With `--single`: skip juz numbering in headings |
 | `--juz` | — | Output only a specific juz/volume (1-based index) |
 | `--force` | `False` | Re-scrape even if marked done; clears `pages.jsonl` |
+| `--override` | `False` | Process books even if output already exists on disk. By default, finished books are skipped on re-runs |
 | `--refresh_categories` | `False` | Re-fetch category book listings (not cached) |
 | `--max_books` | — | Cap total books processed this run (for testing) |
 | `--status` | `False` | Print manifest status and exit without scraping |
@@ -280,9 +280,9 @@ python scraper.py --book_ids 12762,667 --workers 16 --delay 0.3
 │   └── <author_id>_<author_name>/
 │       └── <book_id>_<title>/
 │           ├── book_<id>.json             # Full combined JSON (meta, TOC, all pages with headings); saved only with `--json`
-│           ├── book_<id>.pdf              # Single PDF (or combined when --single_pdf)
+│           ├── book_<id>.pdf              # Single PDF (or combined when --single)
 │           ├── book_<id>_<label>.pdf      # Per-juz PDFs, e.g. book_30186_1.pdf
-│           ├── book_<id>.docx             # Single DOCX (only with --docx; or combined when --single_docx)
+│           ├── book_<id>.docx             # Single DOCX (only with --docx; or combined when --single)
 │           ├── book_<id>_<label>.docx     # Per-juz DOCX files (only with --docx)
 │           ├── meta.json                  # Book metadata (title, author, volume info, etc.)
 │           ├── author_info.json           # Author biography from shamela
@@ -291,9 +291,9 @@ python scraper.py --book_ids 12762,667 --workers 16 --delay 0.3
 │           └── progress.json              # Resume checkpoint (scanned pages.jsonl is source of truth)
 ```
 
-**Per-juz vs combined:** When a book has ajza' (volumes) listed in its dropdown, per-juz files are created by default. Use `--single_pdf` / `--single_docx` to get one combined file instead.
+**Per-juz vs combined:** When a book has ajza' (volumes) listed in its dropdown, per-juz files are created by default. Use `--single` to get one combined file instead.
 
-**PDF vs DOCX:** PDF is built by default. Pass `--docx` to build DOCX instead, or `--docx --also_pdf` to build both formats. Each format independently respects `--single_pdf` / `--single_docx` — you can have per-juz PDFs alongside a combined DOCX.
+**PDF vs DOCX:** PDF is built by default. Pass `--docx` to build DOCX alongside, or `--docx --no-pdf` for DOCX-only. The `--single` flag applies to whichever format is being built.
 
 **JSON assembly:** The full `book_<id>.json` is skipped by default to save RAM on large books (17K-page Tafsir al-Tabari would consume several hundred MB). Pass `--json` to enable it. Individual source files (`pages.jsonl`, `pages_resolved.jsonl`, `meta.json`) are always on disk.
 
@@ -433,7 +433,7 @@ The clearance cookie expires after a few hours — you will need to refresh it p
 - Books that error out are logged in the manifest and can be resumed later
 - The TOC is parsed from the book's home page (not the content page) to get the fully-expanded tree with all nested sections
 - Heading resolution runs independently from page fetching — `pages_resolved.jsonl` contains TOC headings matched to their content pages, and heading numbering is global across the entire book
-- For per-juz files, heading numbers are reset per juz (e.g. juz 1 → `1.1`, `1.2`; juz 2 → `2.1`, `2.2`); same for `--single_pdf` / `--single_docx` unless `--no_juz_outline` is given
+- For per-juz files, heading numbers are reset per juz (e.g. juz 1 → `1.1`, `1.2`; juz 2 → `2.1`, `2.2`); same for `--single` unless `--no_juz_outline` is given
 - Per-juz files have their own cover page annotated with the juz number (`الجزء {label}`)
 - The last page of the book is discovered by parsing the `>>` button in the pagination nav — a single request instead of walking hundreds of tail pages
 - Arabic fonts (Scheherazade New, Noto Naskh Arabic, Amiri) are recommended for best PDF rendering. Install them system-wide or WeasyPrint will fall back to a default font.
