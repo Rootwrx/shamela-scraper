@@ -214,6 +214,26 @@ python scraper.py --out_dir ./shamela_output --status
 python scraper.py --book_id 12762 --json_only
 ```
 
+### Save combined book JSON (meta + TOC + all pages with headings)
+
+```bash
+python scraper.py --book_id 12762 --json
+```
+
+The combined file `book_<id>.json` contains:
+
+```
+{
+  "meta":           { ... },           # book metadata, volume info, toc_summary
+  "toc_flat":       [ ... ],           # flat TOC entries with level, label, page_id
+  "toc":            [ ... ],           # nested TOC tree (for hierarchy)
+  "pages":          [ ... ],           # every page with resolved_headings
+  "author_info":    { ... }            # author biography (if available)
+}
+```
+
+Each page's `resolved_headings` array includes the heading number, label, level, page position, and whether it was bracket-matched or implicit — everything needed for post-processing.
+
 ### Control concurrency and politeness
 
 ```bash
@@ -234,7 +254,7 @@ python scraper.py --book_ids 12762,667 --workers 16 --delay 0.3
 | `--limit` | — | Max pages to scrape per book |
 | `--cf_clearance` | — | Cloudflare `cf_clearance` cookie value |
 | `--user-agent` / `--ua` | — | Browser User-Agent matching the `cf_clearance` source |
-| `--json_only` | `False` | Only save JSON, skip PDF/DOCX generation |
+| `--json` | `False` | Save a combined `book_<id>.json` (meta + TOC + all pages with resolved headings) alongside other outputs |
 | `--pdf_only` | `False` | Rebuild output from cached data only (no network) |
 | `--docx` | `False` | Build DOCX instead of PDF (requires python-docx) |
 | `--also_pdf` | `False` | With `--docx`: build PDF alongside DOCX |
@@ -248,6 +268,7 @@ python scraper.py --book_ids 12762,667 --workers 16 --delay 0.3
 | `--status` | `False` | Print manifest status and exit without scraping |
 | `--columns` | `1` | Number of text columns per PDF page (`1` or `2`) |
 | `--fast` | `False` | Drop kashida justification for faster PDF rendering |
+| `--style_config` | — | Path to `style_config.json` (falls back to project root, then built-in defaults) |
 | `--flush_every` | `50` | HTML buffer flush interval for PDF generation |
 
 ## Output structure
@@ -258,7 +279,7 @@ python scraper.py --book_ids 12762,667 --workers 16 --delay 0.3
 ├── <category_id>_<category_name>/
 │   └── <author_id>_<author_name>/
 │       └── <book_id>_<title>/
-│           ├── book_<id>.json             # Full combined JSON (not saved by default — too large)
+│           ├── book_<id>.json             # Full combined JSON (meta, TOC, all pages with headings); saved only with `--json`
 │           ├── book_<id>.pdf              # Single PDF (or combined when --single_pdf)
 │           ├── book_<id>_<label>.pdf      # Per-juz PDFs, e.g. book_30186_1.pdf
 │           ├── book_<id>.docx             # Single DOCX (only with --docx; or combined when --single_docx)
@@ -274,13 +295,122 @@ python scraper.py --book_ids 12762,667 --workers 16 --delay 0.3
 
 **PDF vs DOCX:** PDF is built by default. Pass `--docx` to build DOCX instead, or `--docx --also_pdf` to build both formats. Each format independently respects `--single_pdf` / `--single_docx` — you can have per-juz PDFs alongside a combined DOCX.
 
-**JSON assembly:** The full `book_<id>.json` is skipped by default to save RAM on large books. Individual source files (`pages.jsonl`, `pages_resolved.jsonl`, `meta.json`) are always on disk.
+**JSON assembly:** The full `book_<id>.json` is skipped by default to save RAM on large books (17K-page Tafsir al-Tabari would consume several hundred MB). Pass `--json` to enable it. Individual source files (`pages.jsonl`, `pages_resolved.jsonl`, `meta.json`) are always on disk.
 
 ## Resumability
 
 The scraper writes each page to `pages.jsonl` immediately after fetching it. If interrupted (Ctrl+C, crash, timeout), re-running the **exact same command** resumes from where it stopped — no pages are re-downloaded.
 
 Progress is self-healing: on resume, the script scans `pages.jsonl` on disk and uses it as the source of truth, even if the checkpoint file (`progress.json`) was corrupted or lagging behind.
+
+## Implicit headings (missing titles)
+
+Some TOC entries never appear as visible headings in the book text — the author refers to a section by number (e.g. "4.3. دلالة الألفاظ على أنفسها") but skips a printed heading line. These are called **implicit headings**.
+
+### Detection
+
+During heading resolution, implicit entries are logged and saved to a dedicated file:
+
+```
+<book_dir>/implicits.json
+```
+
+Example contents:
+
+```json
+[
+  {"page": 15, "number": "4.3", "label": "دلالة الألفاظ على أنفسها"},
+  {"page": 21, "number": "4.4", "label": "إطلاق الاسم على الصفة"},
+  {"page": 22, "number": "4.5", "label": "إقحام لفظة «اسم» في الكلام"}
+]
+```
+
+Each entry contains:
+- `page` — the Shamela page ID where the heading should appear
+- `number` — the TOC heading number (e.g. `4.3`)
+- `label` — the heading text
+
+### How to fix
+
+Implicit headings have **no number in the content text** — the numbering (`4.3`, `4.4`, …) is auto-generated from the TOC hierarchy, not from the text itself. When fixing, you supply both the number and the label.
+
+Two approaches:
+
+**1. Edit the DOCX file directly** — Open the `.docx` in Word/WPS/LibreOffice, navigate to the page, type the heading where it belongs (paragraph break or mid-paragraph — your judgment). Re-upload or redistribute the edited file. No re-run needed.
+
+**2. Edit the source HTML + rebuild** — Find the corresponding Shamela page file in the book directory, insert a heading tag like `<h3>4.3. دلالة الألفاظ على أنفسها</h3>` at the correct position, then re-run with `--docx --pdf_only` to regenerate from your edits.
+
+Both methods require human judgment — `implicits.json` only tells you *what* is missing and *on which page*, not *where on that page*. The insertion point could be inside a paragraph, after a specific word, etc., so the script never auto-injects.
+
+## Style configuration
+
+All visual styles — fonts, colors, heading sizes, shapes, and more — come from `style_config.json` in the project root. You can edit this file directly to customize the output without touching the Python code.
+
+Use a custom config path:
+
+```bash
+python scraper.py --book_id 12762 --style_config /path/to/my_config.json
+```
+
+### config file structure
+
+```json
+{
+  "fonts": {
+    "heading": "Scheherazade New",
+    "body": "Scheherazade New"
+  },
+  "body_size_pdf": 14,
+  "body_size_docx": 15,
+  "palette": {
+    "gold": "#c99200",
+    "gold_light": "#e8b830",
+    "gold_dark": "#6b4f10",
+    "teal": "#256080",
+    "rust": "#b8451a",
+    "sepia": "#805830",
+    "ink": "#1a1008",
+    "cream": "#fefcf7",
+    "parchment": "#fcf8ef",
+    "brown": "#3e2712"
+  },
+  "shamela_span_colors": {
+    "c1": "#cc3333",
+    "c2": "#1a7a1a",
+    "c3": "#8a8a20",
+    "c4": "#909090",
+    "c5": "#1a7aa0"
+  },
+  "heading_levels": [
+    {"level": 0, "size_pdf": 18, "size_docx": 19, "color": "#e8b830", "shape": "۞"},
+    {"level": 1, "size_pdf": 17, "size_docx": 18, "color": "#b8451a", "shape": "❖"},
+    {"level": 2, "size_pdf": 17, "size_docx": 17, "color": "#256080", "shape": "◈"},
+    {"level": 3, "size_pdf": 17, "size_docx": 16, "color": "#805830", "shape": "◆"},
+    {"level": 4, "size_pdf": 17, "size_docx": 16, "color": "#2d7a4f", "shape": "●"},
+    {"level": 5, "size_pdf": 17, "size_docx": 16, "color": "#7b2d8e", "shape": "★"},
+    {"level": 6, "size_pdf": 17, "size_docx": 16, "color": "#c07a1a", "shape": "✦"},
+    {"level": 7, "size_pdf": 17, "size_docx": 16, "color": "#c0392b", "shape": "◇"},
+    {"level": 8, "size_pdf": 17, "size_docx": 16, "color": "#1e7a9e", "shape": "◎"},
+    {"level": 9, "size_pdf": 17, "size_docx": 16, "color": "#c06080", "shape": "▪"}
+  ],
+  "delimiter_colors": {
+    "brace": "#FF0000",
+    "verse": "#FF0000"
+  }
+}
+```
+
+| Section | What it controls |
+|---------|-----------------|
+| `fonts` | Typeface for heading text (`heading`) and body text (`body`). Affects both PDF and DOCX. |
+| `body_size_pdf` | Body text size in PDF (pt). |
+| `body_size_docx` | Body text size in DOCX (pt). |
+| `palette` | Named colors used across cover, headings, borders, etc. Change these to shift the entire color scheme. |
+| `shamela_span_colors` | Colors for Shamela's original `<span class="c1">` through `<span class="c5">` used in body text. |
+| `heading_levels` | Per-level settings: `size_pdf` / `size_docx` (pt), `color` (hex), and `shape` (Unicode character). |
+| `delimiter_colors` | Colors for `{...}` brace text and `﴾...﴿` / `﴿...﴾` verse delimiters in body content. |
+
+Any field you omit falls back to the built-in default. You only need to include the values you want to change.
 
 ## Cloudflare bypass
 
