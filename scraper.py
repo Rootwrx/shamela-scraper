@@ -172,16 +172,16 @@ DEFAULT_STYLE_CFG = {
         "c5": "#1a7aa0",
     },
     "heading_levels": [
-        {"level": 0, "size_pdf": 18, "size_docx": 19, "color": "#e8b830", "shape": "۞"},
-        {"level": 1, "size_pdf": 17, "size_docx": 18, "color": "#b8451a", "shape": "❖"},
-        {"level": 2, "size_pdf": 17, "size_docx": 17, "color": "#256080", "shape": "◈"},
-        {"level": 3, "size_pdf": 17, "size_docx": 16, "color": "#805830", "shape": "◆"},
-        {"level": 4, "size_pdf": 17, "size_docx": 16, "color": "#2d7a4f", "shape": "●"},
-        {"level": 5, "size_pdf": 17, "size_docx": 16, "color": "#7b2d8e", "shape": "★"},
-        {"level": 6, "size_pdf": 17, "size_docx": 16, "color": "#c07a1a", "shape": "✦"},
-        {"level": 7, "size_pdf": 17, "size_docx": 16, "color": "#c0392b", "shape": "◇"},
-        {"level": 8, "size_pdf": 17, "size_docx": 16, "color": "#1e7a9e", "shape": "◎"},
-        {"level": 9, "size_pdf": 17, "size_docx": 16, "color": "#c06080", "shape": "▪"},
+        {"level": 0, "size_pdf": 18, "size_docx": 22, "color": "#e8b830", "shape": "۞"},
+        {"level": 1, "size_pdf": 17, "size_docx": 21, "color": "#b8451a", "shape": "❖"},
+        {"level": 2, "size_pdf": 17, "size_docx": 20, "color": "#256080", "shape": "◈"},
+        {"level": 3, "size_pdf": 17, "size_docx": 19, "color": "#805830", "shape": "◆"},
+        {"level": 4, "size_pdf": 17, "size_docx": 19, "color": "#2d7a4f", "shape": "●"},
+        {"level": 5, "size_pdf": 17, "size_docx": 19, "color": "#7b2d8e", "shape": "★"},
+        {"level": 6, "size_pdf": 17, "size_docx": 19, "color": "#c07a1a", "shape": "✦"},
+        {"level": 7, "size_pdf": 17, "size_docx": 19, "color": "#c0392b", "shape": "◇"},
+        {"level": 8, "size_pdf": 17, "size_docx": 19, "color": "#1e7a9e", "shape": "◎"},
+        {"level": 9, "size_pdf": 17, "size_docx": 19, "color": "#c06080", "shape": "▪"},
     ],
     "delimiter_colors": {
         "brace": "#FF0000",
@@ -4334,7 +4334,11 @@ def _docx_add_run(
     _docx_set_run_rtl_font(run, font_name)
     if size:
         run.font.size = Pt(size)
+        run.font.cs_size = Pt(size)
     run.font.bold = bold
+    run.font.cs_bold = bold  # w:bCs — Word renders Arabic/RTL weight from
+    # bCs, not b, since the run is marked complex_script=True. Without this,
+    # "bold" text stays visually thin no matter what w:b says.
     if color_hex:
         run.font.color.rgb = RGBColor.from_string(color_hex.lstrip("#").upper())
 
@@ -4382,7 +4386,7 @@ def _docx_add_chapter_heading(doc, p_tag) -> None:
     para.paragraph_format.space_after = Pt(6)
     text = p_tag.get_text(" ", strip=True)
     _docx_add_run(
-        para, text, font_name=_DOCX_FONT_HEAD, size=17, bold=True, color_hex=_DOCX_RUST
+        para, text, font_name=_DOCX_FONT_HEAD, size=20, bold=True, color_hex=_DOCX_RUST
     )
 
 
@@ -4573,8 +4577,11 @@ def _docx_setup_styles(doc) -> None:
 
     normal = doc.styles["Normal"]
     normal.font.name = _DOCX_FONT_BODY
-    normal.font.size = Pt(STYLE_CFG.get("body_size_docx", DEFAULT_STYLE_CFG["body_size_docx"]))
+    _body_pt = Pt(STYLE_CFG.get("body_size_docx", DEFAULT_STYLE_CFG["body_size_docx"]))
+    normal.font.size = _body_pt
+    normal.font.cs_size = _body_pt
     normal.font.bold = True
+    normal.font.cs_bold = True  # w:bCs — required for RTL/Arabic weight in Word
     rpr = normal.element.get_or_add_rPr()
     rFonts = rpr.get_or_add_rFonts()
     rFonts.set(qn("w:cs"), _DOCX_FONT_BODY)
@@ -4583,6 +4590,7 @@ def _docx_setup_styles(doc) -> None:
     body_style = doc.styles.add_style("Shamela Body", WD_STYLE_TYPE.PARAGRAPH)
     body_style.base_style = normal
     body_style.font.bold = True
+    body_style.font.cs_bold = True
     body_style.paragraph_format.space_after = Pt(4)
     body_style.paragraph_format.line_spacing = 1.08
     body_style.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.LEFT
@@ -4984,7 +4992,7 @@ def build_docx(
         pending_page_break = False
         bio_h.alignment = WD_ALIGN_PARAGRAPH.LEFT
         _docx_set_bidi(bio_h)
-        _docx_add_run(bio_h, "ترجمة المؤلف", font_name=_DOCX_FONT_HEAD, size=18, bold=True, color_hex=_DOCX_TEAL)
+        _docx_add_run(bio_h, "ترجمة المؤلف", font_name=_DOCX_FONT_HEAD, size=22, bold=True, color_hex=_DOCX_TEAL)
         for line in author_info["bio"].splitlines():
             if line.strip():
                 bp = doc.add_paragraph()
@@ -4999,7 +5007,7 @@ def build_docx(
         _docx_page_break_before(body_h)
     body_h.alignment = WD_ALIGN_PARAGRAPH.LEFT
     _docx_set_bidi(body_h)
-    _docx_add_run(body_h, "نص الكتاب", font_name=_DOCX_FONT_HEAD, size=18, bold=True, color_hex=_DOCX_TEAL)
+    _docx_add_run(body_h, "نص الكتاب", font_name=_DOCX_FONT_HEAD, size=22, bold=True, color_hex=_DOCX_TEAL)
 
     toc_flat = meta.get("toc_flat", [])
     toc_by_page: dict = {}

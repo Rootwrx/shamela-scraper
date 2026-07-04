@@ -25,16 +25,16 @@
     "c5": "#1a7aa0"
   },
   "heading_levels": [
-    {"level": 0, "size_pdf": 18, "size_docx": 19, "color": "#e8b830", "shape": "۞"},
-    {"level": 1, "size_pdf": 17, "size_docx": 18, "color": "#b8451a", "shape": "❖"},
-    {"level": 2, "size_pdf": 17, "size_docx": 17, "color": "#256080", "shape": "◈"},
-    {"level": 3, "size_pdf": 17, "size_docx": 16, "color": "#805830", "shape": "◆"},
-    {"level": 4, "size_pdf": 17, "size_docx": 16, "color": "#2d7a4f", "shape": "●"},
-    {"level": 5, "size_pdf": 17, "size_docx": 16, "color": "#7b2d8e", "shape": "★"},
-    {"level": 6, "size_pdf": 17, "size_docx": 16, "color": "#c07a1a", "shape": "✦"},
-    {"level": 7, "size_pdf": 17, "size_docx": 16, "color": "#c0392b", "shape": "◇"},
-    {"level": 8, "size_pdf": 17, "size_docx": 16, "color": "#1e7a9e", "shape": "◎"},
-    {"level": 9, "size_pdf": 17, "size_docx": 16, "color": "#c06080", "shape": "▪"}
+    {"level": 0, "size_pdf": 18, "size_docx": 24, "color": "#e8b830", "shape": "۞"},
+    {"level": 1, "size_pdf": 17, "size_docx": 22, "color": "#b8451a", "shape": "❖"},
+    {"level": 2, "size_pdf": 17, "size_docx": 21, "color": "#256080", "shape": "◈"},
+    {"level": 3, "size_pdf": 17, "size_docx": 20, "color": "#805830", "shape": "◆"},
+    {"level": 4, "size_pdf": 17, "size_docx": 20, "color": "#2d7a4f", "shape": "●"},
+    {"level": 5, "size_pdf": 17, "size_docx": 20, "color": "#7b2d8e", "shape": "★"},
+    {"level": 6, "size_pdf": 17, "size_docx": 20, "color": "#c07a1a", "shape": "✦"},
+    {"level": 7, "size_pdf": 17, "size_docx": 20, "color": "#c0392b", "shape": "◇"},
+    {"level": 8, "size_pdf": 17, "size_docx": 20, "color": "#1e7a9e", "shape": "◎"},
+    {"level": 9, "size_pdf": 17, "size_docx": 20, "color": "#c06080", "shape": "▪"}
   ],
   "delimiter_colors": {
     "brace": "#FF0000",
