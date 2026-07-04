@@ -4212,16 +4212,16 @@ _HEADING_SHAPES = {
 }
 
 _DOCX_LEVEL_COLORS = {
-    0: (_DOCX_GOLD_L, 28),
-    1: (_DOCX_RUST, 26),
-    2: (_DOCX_TEAL, 24),
-    3: (_DOCX_SEPIA, 22),
-    4: ("2D7A4F", 21),
-    5: ("7B2D8E", 20),
-    6: ("C07A1A", 19),
-    7: ("C0392B", 19),
-    8: ("1E7A9E", 19),
-    9: ("C06080", 19),
+    0: (_DOCX_GOLD_L, 26),
+    1: (_DOCX_RUST, 24),
+    2: (_DOCX_TEAL, 22),
+    3: (_DOCX_SEPIA, 20),
+    4: ("2D7A4F", 19),
+    5: ("7B2D8E", 18),
+    6: ("C07A1A", 17),
+    7: ("C0392B", 17),
+    8: ("1E7A9E", 17),
+    9: ("C06080", 17),
 }
 
 
@@ -4384,22 +4384,19 @@ def _docx_add_chapter_heading(doc, p_tag) -> None:
 
 
 def _docx_add_visible_heading(doc, text: str, level_num: int) -> None:
-    """Visible, styled heading paragraph.
+    """Visible, styled heading paragraph for on-page display only.
 
-    Levels 1-3 use real Word "Heading N" styles so they appear in the
-    Navigation Pane / any TOC field.  Level 0 (book titles) and levels 4+
-    (deep sub-headings) use a plain paragraph (styled but no outline),
-    matching the PDF's bookmark-level behaviour.
+    Deliberately NOT a Word "Heading N" style, so it does not create an
+    entry in the Navigation Pane / outline — exactly like the PDF's
+    `.toc-numbered-heading`, which explicitly sets `bookmark-level: none`.
+    The outline entry (carrying the numbering) comes solely from the
+    paired invisible anchor via `_docx_add_invisible_heading`, so numbers
+    never appear in the visible content, only in the outline.
     """
     if not text.strip():
         return
     color, size = _DOCX_LEVEL_COLORS.get(min(level_num, 9), _DOCX_LEVEL_COLORS[9])
-    is_outline_level = level_num in (1, 2, 3)
-    if is_outline_level:
-        word_level = min(level_num + 1, 9)
-        para = doc.add_heading(level=word_level)
-    else:
-        para = doc.add_paragraph()
+    para = doc.add_paragraph()
     para.alignment = WD_ALIGN_PARAGRAPH.LEFT
     _docx_set_bidi(para)
     para.paragraph_format.space_before = Pt(8)
@@ -4420,17 +4417,26 @@ def _docx_strip_number_prefix(text: str) -> str:
 
 
 def _docx_add_invisible_heading(doc, text: str, level_num: int) -> None:
-    """Minimal heading for outline-only entries (implicit TOC headings).
+    """A heading that exists purely for outline/navigation purposes.
 
-    For "implicit" TOC entries — headings the scraper knows about from the
+    Only levels 1-3 produce Word heading style entries (Navigation Pane /
+    any TOC field), matching the PDF's bookmark-level behaviour.  Level 0
+    (book titles) and levels 4+ (deep sub-headings) get visible content
+    only — no outline entry.
+
+    Mirrors the PDF's `.toc-bookmark-anchor` paragraphs: in the PDF, every
+    outline/bookmark entry is generated from these anchors specifically
+    (bookmark-level lives on `.toc-bm-N`, while the *visible*
+    `.toc-numbered-heading` explicitly sets `bookmark-level: none`). For
+    "implicit" TOC entries — headings the scraper knows about from the
     book's TOC but never found matching visible text for on the page —
-    the PDF renders an invisible anchor (1pt, height 0) so the title still
-    shows up in the PDF's outline bookmarks.  Word has no equivalent of an
-    invisible-but-indexed element, so we add a real "Heading N" paragraph
-    (so it lands in the Navigation Pane / any TOC field) but shrink it to
-    be visually negligible, same intent.
+    the PDF renders *only* this anchor (1pt, height 0, invisible on the
+    page) so the title still shows up in the PDF's outline.
 
-    Only levels 1-3 produce outline entries; level 0 and 4+ get nothing.
+    Word has no equivalent of an invisible-but-indexed element, so we add
+    a real "Heading N" paragraph (so it lands in the Navigation Pane / any
+    TOC field) but shrink it to be visually negligible on the page, same
+    intent as the PDF's invisible anchor.
     """
     if not text.strip():
         return
@@ -4526,7 +4532,15 @@ def _docx_emit_fragment(doc, container, max_toc_level: int = -1) -> None:
                 # TOC backing, so no outline entry — visible content only.
                 in_toc_range = max_toc_level < 0 or level_num <= max_toc_level
                 if has_visible_pair:
+                    # Source the visible text from the anchor (full,
+                    # correctly TOC-matched title) rather than the literal
+                    # on-page paragraph, which can be truncated — same
+                    # reasoning as before — but strip the number so the
+                    # numbering shows up ONLY in the outline, never in the
+                    # visible page content.
                     visible_text = _docx_strip_number_prefix(anchor_text)
+                    if in_toc_range:
+                        _docx_add_invisible_heading(doc, anchor_text, level_num)
                     _docx_add_visible_heading(doc, visible_text, level_num)
                 else:
                     # Standalone anchor (an "implicit" TOC entry with no
