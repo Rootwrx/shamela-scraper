@@ -2053,7 +2053,7 @@ def _build_html_css(meta: dict, columns: int = 1, fast: bool = False) -> str:
             max_toc_level = entry["level"]
 
     toc_bm_css_parts = []
-    for lvl in range(max_toc_level + 1):
+    for lvl in range(1, min(max_toc_level, 3) + 1):
         bm = lvl + 2
         toc_bm_css_parts.append(
             f".toc-bm-{lvl}, .toc-numbered-heading.toc-bm-{lvl} "
@@ -3702,7 +3702,6 @@ def _render_page_html(
         return t
 
     def _heading_html(h: dict) -> str:
-        num = h.get("number", "")
         level = h["level"]
         nh_level = h.get("_nh_level", level)
         display = _heading_display_text(h["text"])
@@ -3710,20 +3709,18 @@ def _render_page_html(
         shape_prefix = f'<span class="heading-shape">{shape}</span> ' if shape else ""
         if h.get("auto"):
             label_text = _e(display)
-            bm_label = f"{num}. {label_text}" if num else label_text
             return (
-                f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{bm_label}</p>\n'
+                f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{label_text}</p>\n'
                 f'<p class="toc-numbered-heading toc-nh-{nh_level}">{shape_prefix}{label_text}</p>\n'
             )
         if h.get("implicit"):
             if h.get("_skip_outline"):
                 return ""
-            bm_label = f"{num}. {_e(display)}" if num else _e(display)
-            if no_implicit:
-                return f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{bm_label}</p>\n'
             label_html = _e(display)
+            if no_implicit:
+                return f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{label_html}</p>\n'
             return (
-                f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{bm_label}</p>\n'
+                f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{label_html}</p>\n'
                 f'<p class="toc-numbered-heading toc-nh-{nh_level}">{shape_prefix}{label_html}</p>\n'
             )
         
@@ -3733,9 +3730,8 @@ def _render_page_html(
         else:
             label_html = _e(display)
             
-        bm_label = f"{num}. {_e(display)}" if num else _e(display)
         return (
-            f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{bm_label}</p>\n'
+            f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{_e(display)}</p>\n'
             f'<p class="toc-numbered-heading toc-nh-{nh_level}">{shape_prefix}{label_html}</p>\n'
         )
 
@@ -4426,6 +4422,11 @@ def _docx_strip_number_prefix(text: str) -> str:
 def _docx_add_invisible_heading(doc, text: str, level_num: int) -> None:
     """A heading that exists purely for outline/navigation purposes.
 
+    Only levels 1-3 produce Word heading style entries (Navigation Pane /
+    any TOC field), matching the PDF's bookmark-level behaviour.  Level 0
+    (book titles) and levels 4+ (deep sub-headings) get visible content
+    only — no outline entry.
+
     Mirrors the PDF's `.toc-bookmark-anchor` paragraphs: in the PDF, every
     outline/bookmark entry is generated from these anchors specifically
     (bookmark-level lives on `.toc-bm-N`, while the *visible*
@@ -4441,6 +4442,8 @@ def _docx_add_invisible_heading(doc, text: str, level_num: int) -> None:
     intent as the PDF's invisible anchor.
     """
     if not text.strip():
+        return
+    if level_num not in (1, 2, 3):
         return
     word_level = min(level_num + 1, 9)
     para = doc.add_heading(level=word_level)
