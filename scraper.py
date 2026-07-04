@@ -4731,7 +4731,15 @@ def _md_emit_line(f, container, max_toc_level: int = -1) -> None:
                 if level_num < 2:
                     f.write(f"{'#' * (level_num + 1)} {shape_str}{heading_text}\n\n")
                 else:
-                    f.write(f"**{shape_str}{heading_text}**\n\n")
+                    hl_list = STYLE_CFG.get("heading_levels", DEFAULT_STYLE_CFG["heading_levels"])
+                    hl_lookup = {h["level"]: h for h in hl_list}
+                    hc = hl_lookup.get(level_num, {})
+                    color = hc.get("color", "#000000")
+                    rel_size = max(1.05, 1.15 - level_num * 0.04) if level_num <= 6 else 1.0
+                    f.write(
+                        f'<div style="color:{color};font-size:{rel_size:.2f}em;font-weight:bold">'
+                        f'{shape_str}{heading_text}</div>\n\n'
+                    )
                 continue
             if "toc-numbered-heading" in classes:
                 continue
