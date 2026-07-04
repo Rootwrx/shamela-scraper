@@ -2050,7 +2050,7 @@ def _build_html_css(meta: dict, columns: int = 1, fast: bool = False) -> str:
             max_toc_level = entry["level"]
 
     toc_bm_css_parts = []
-    for lvl in range(1, min(max_toc_level, 3) + 1):
+    for lvl in range(max_toc_level + 1):
         bm = lvl + 2
         toc_bm_css_parts.append(
             f".toc-bm-{lvl}, .toc-numbered-heading.toc-bm-{lvl} "
@@ -3704,10 +3704,17 @@ def _render_page_html(
         display = _heading_display_text(h["text"])
         shape = _HEADING_SHAPES.get(nh_level, "")
         shape_prefix = f'<span class="heading-shape">{shape}</span> ' if shape else ""
+        num = h.get("number", "")
+        num_attr = f' data-number="{_e(num)}"' if num else ""
+        # Number prefix for outline/navigation entries only (PDF bookmarks,
+        # DOCX Navigation Pane) — shown for up to three levels (x, x.x, x.x.x),
+        # deeper levels get title-only entries.  The visible toc-numbered-heading
+        # gets no number at any level; numbers appear solely in the navigation.
+        anchor_prefix = f"{num}. " if (num and nh_level <= 2) else ""
         if h.get("auto"):
             label_text = _e(display)
             return (
-                f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{label_text}</p>\n'
+                f'<p class="toc-bookmark-anchor toc-bm-{nh_level}"{num_attr}>{anchor_prefix}{label_text}</p>\n'
                 f'<p class="toc-numbered-heading toc-nh-{nh_level}">{shape_prefix}{label_text}</p>\n'
             )
         if h.get("implicit"):
@@ -3715,9 +3722,9 @@ def _render_page_html(
                 return ""
             label_html = _e(display)
             if no_implicit:
-                return f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{label_html}</p>\n'
+                return f'<p class="toc-bookmark-anchor toc-bm-{nh_level}"{num_attr}>{anchor_prefix}{label_html}</p>\n'
             return (
-                f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{label_html}</p>\n'
+                f'<p class="toc-bookmark-anchor toc-bm-{nh_level}"{num_attr}>{anchor_prefix}{label_html}</p>\n'
                 f'<p class="toc-numbered-heading toc-nh-{nh_level}">{shape_prefix}{label_html}</p>\n'
             )
         
@@ -3728,7 +3735,7 @@ def _render_page_html(
             label_html = _e(display)
             
         return (
-            f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{_e(display)}</p>\n'
+            f'<p class="toc-bookmark-anchor toc-bm-{nh_level}"{num_attr}>{anchor_prefix}{_e(display)}</p>\n'
             f'<p class="toc-numbered-heading toc-nh-{nh_level}">{shape_prefix}{label_html}</p>\n'
         )
 
@@ -4419,10 +4426,11 @@ def _docx_strip_number_prefix(text: str) -> str:
 def _docx_add_invisible_heading(doc, text: str, level_num: int) -> None:
     """A heading that exists purely for outline/navigation purposes.
 
-    Only levels 1-3 produce Word heading style entries (Navigation Pane /
-    any TOC field), matching the PDF's bookmark-level behaviour.  Level 0
-    (book titles) and levels 4+ (deep sub-headings) get visible content
-    only — no outline entry.
+    Every level produces a Word heading style entry (Navigation Pane /
+    any TOC field), same as the PDF's bookmark-level behaviour where all
+    heading levels appear in the outline.  Level 0 (book titles), levels
+    1-3 (chapters/sections), and levels 4+ (deep sub-headings) all get
+    outline entries.
 
     Mirrors the PDF's `.toc-bookmark-anchor` paragraphs: in the PDF, every
     outline/bookmark entry is generated from these anchors specifically
@@ -4439,8 +4447,6 @@ def _docx_add_invisible_heading(doc, text: str, level_num: int) -> None:
     intent as the PDF's invisible anchor.
     """
     if not text.strip():
-        return
-    if level_num not in (1, 2, 3):
         return
     word_level = min(level_num + 1, 9)
     para = doc.add_heading(level=word_level)
@@ -4534,10 +4540,10 @@ def _docx_emit_fragment(doc, container, max_toc_level: int = -1) -> None:
                 if has_visible_pair:
                     # Source the visible text from the anchor (full,
                     # correctly TOC-matched title) rather than the literal
-                    # on-page paragraph, which can be truncated — same
-                    # reasoning as before — but strip the number so the
-                    # numbering shows up ONLY in the outline, never in the
-                    # visible page content.
+                    # on-page paragraph, which can be truncated.  The number
+                    # prefix is stripped here, so it appears only in the
+                    # Navigation Pane (via _docx_add_invisible_heading) and
+                    # never in the visible page content.
                     visible_text = _docx_strip_number_prefix(anchor_text)
                     if in_toc_range:
                         _docx_add_invisible_heading(doc, anchor_text, level_num)
