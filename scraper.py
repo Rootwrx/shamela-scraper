@@ -48,77 +48,74 @@ Core features
 
 Usage
 ─────
-    # single book (legacy)
-    python shamela_scraper.py --book_id 12762
+    # single book
+    python shamela_scraper.py --book 12762
 
     # several explicit books
-    python shamela_scraper.py --book_ids 12762,667,151109
+    python shamela_scraper.py --books 12762,667,151109
 
     # everything in one or more categories
-    python shamela_scraper.py --category_ids 13,33,40
+    python shamela_scraper.py --categories 13,33,40
 
     # mix & match, custom output dir
-    python shamela_scraper.py --category_ids 13 --book_ids 667 --out_dir ./library
+    python shamela_scraper.py --categories 13 --books 667 --out_dir ./library
 
     # re-run to resume incomplete books, skip finished ones
-    python shamela_scraper.py --category_ids 13
+    python shamela_scraper.py --categories 13
 
     # force re-scrape even if marked done
-    python shamela_scraper.py --book_id 12762 --force
-
-    # only rebuild outputs from cached data (no network)
-    python shamela_scraper.py --book_id 12762 --pdf_only
+    python shamela_scraper.py --book 12762 --force
 
     # build DOCX instead of PDF
-    python shamela_scraper.py --book_id 12762 --docx
+    python shamela_scraper.py --book 12762 --docx
 
     # build both DOCX and PDF
-    python shamela_scraper.py --book_id 12762 --docx --pdf
+    python shamela_scraper.py --book 12762 --docx --pdf
 
     # faster concurrency (16 workers, shorter delay)
-    python shamela_scraper.py --book_ids 12762 --workers 16 --delay 0.3
+    python shamela_scraper.py --books 12762 --workers 16 --delay 0.3
 
     # two-column newspaper-style PDF layout
-    python shamela_scraper.py --book_id 12762 --columns 2
+    python shamela_scraper.py --book 12762 --columns 2
 
     # drop kashida justification for faster PDF rendering
-    python shamela_scraper.py --book_id 12762 --fast
+    python shamela_scraper.py --book 12762 --fast
 
     # single combined output even for multi-volume books
-    python shamela_scraper.py --book_id 12762 --single
+    python shamela_scraper.py --book 12762 --single
 
     # single combined output without juz numbering in headings
-    python shamela_scraper.py --book_id 12762 --single --no_juz_outline
+    python shamela_scraper.py --book 12762 --single --no_juz_outline
 
     # specific volume only (1-based)
-    python shamela_scraper.py --book_id 12762 --juz 3
+    python shamela_scraper.py --book 12762 --juz 3
 
     # DOCX only (no PDF)
-    python shamela_scraper.py --book_id 12762 --docx --no-pdf
+    python shamela_scraper.py --book 12762 --docx --no-pdf
 
     # both PDF and DOCX
-    python shamela_scraper.py --book_id 12762 --docx --pdf
+    python shamela_scraper.py --book 12762 --docx --pdf
 
     # Markdown alongside PDF
-    python shamela_scraper.py --book_id 12762 --md
+    python shamela_scraper.py --book 12762 --md
 
     # all three formats
-    python shamela_scraper.py --book_id 12762 --docx --md --no-pdf
+    python shamela_scraper.py --book 12762 --docx --md --no-pdf
 
     # JSON only — no PDF/DOCX output
-    python shamela_scraper.py --book_id 12762 --json_only
+    python shamela_scraper.py --book 12762 --json_only
 
     # scrape only first 50 pages per book
-    python shamela_scraper.py --category_ids 13 --limit 50
+    python shamela_scraper.py --categories 13 --limit 50
 
     # continue from a specific page ID
-    python shamela_scraper.py --book_id 12762 --start_page 200
+    python shamela_scraper.py --book 12762 --start_page 200
 
     # refresh cached category listings
-    python shamela_scraper.py --category_ids 13 --refresh_categories
+    python shamela_scraper.py --categories 13 --refresh_categories
 
     # process at most 5 books (testing)
-    python shamela_scraper.py --category_ids 13 --max_books 5
+    python shamela_scraper.py --categories 13 --max_books 5
 
     # quick status summary
     python shamela_scraper.py --out_dir ./library --status
@@ -5139,13 +5136,12 @@ def process_book(
     book_id = int(book_id)
     entry = manifest.book(book_id)
 
-    # ── --pdf_only / --docx on an already-scraped book: rebuild output(s)
-    # from cached data on disk, no network. Without this, a book that was
-    # already marked "done" from a prior PDF-only run would get skipped
+    # ── Rebuild from cached data on disk, no network. Without this, a book
+    # that was already marked "done" from a prior run would get skipped
     # entirely by the "already done" check below, even when --docx is
     # asking for a format that was never actually built yet.
-    # Rebuild from cached data if we can skip network (--pdf_only, --docx, --override)
-    if (args.pdf_only or args.docx or args.md or args.override) and entry.get("dir") and not args.force:
+    # Rebuild from cached data if we can skip network (--docx, --md, --override)
+    if (args.docx or args.md or args.override) and entry.get("dir") and not args.force:
         bd = Path(out_dir) / entry["dir"]
         meta = load_json(bd / "meta.json")
         author_info = load_json(bd / "author_info.json")
@@ -5164,7 +5160,7 @@ def process_book(
             return
         if meta and author_info is not None and not has_pages:
             print(
-                f"  [!] --pdf_only/--docx requested for book {book_id} but no scraped "
+                f"  [!] --docx/--md requested for book {book_id} but no scraped "
                 f"page data found on disk — scraping first, then building output(s) ..."
             )
         else:
@@ -5202,7 +5198,6 @@ def process_book(
         entry.get("status") == "done"
         and not args.force
         and not args.override
-        and not args.pdf_only
         and not args.docx
         and not args.md
     ):
@@ -5275,11 +5270,11 @@ def process_book(
     _has_existing_pages = (
         _pages_check_path.exists() and _pages_check_path.stat().st_size > 0
     )
-    _rebuild_only = args.pdf_only or args.docx
+    _rebuild_only = args.docx or args.md
     need_scrape = not _rebuild_only or not _has_existing_pages
     if _rebuild_only and not _has_existing_pages:
         print(
-            f"  [!] --pdf_only/--docx requested but no scraped data found for "
+            f"  [!] --docx/--md requested but no scraped data found for "
             f"book {book_id} yet — scraping now (one-time), then building output(s) ..."
         )
     if need_scrape:
@@ -5326,7 +5321,7 @@ def _build_book_outputs(
     manifest: Manifest,
     need_scrape: bool = True,
 ) -> None:
-    """Heading resolution → combined JSON → PDF (shared by scrape and --pdf_only paths)."""
+    """Heading resolution → combined JSON → PDF (shared by scrape and rebuild paths)."""
     pages_path = book_dir / "pages.jsonl"
     resolved_path = book_dir / "pages_resolved.jsonl"
     print(f"[*] Resolving headings for book {book_id} ...")
@@ -5575,7 +5570,7 @@ def _build_book_outputs(
                          no_implicit=getattr(args, "no_implicit", False))
 
     # Only mark "done" when scraping was actually performed and completed.
-    # --pdf_only must never change the scraping status on its own, unless we
+    # Rebuild-only modes must never change the scraping status on their own, unless we
     # had to auto-scrape because no page data existed yet (need_scrape=True).
     if need_scrape:
         if entry.get("status") != "paused":
@@ -5593,8 +5588,8 @@ def _build_book_outputs(
 def build_book_queue(session: requests.Session, args, manifest: Manifest) -> list:
     queue = []  # list of (book_id, category_label_or_None)
 
-    if args.category_ids:
-        for cid in [c.strip() for c in args.category_ids.split(",") if c.strip()]:
+    if args.categories:
+        for cid in [c.strip() for c in args.categories.split(",") if c.strip()]:
             cid_int = int(cid)
             cached = manifest.data["categories"].get(str(cid_int))
             if cached and not args.refresh_categories:
@@ -5616,12 +5611,12 @@ def build_book_queue(session: requests.Session, args, manifest: Manifest) -> lis
             for b in cat_info["books"]:
                 queue.append((b["book_id"], label))
 
-    if args.book_ids:
-        for bid in [b.strip() for b in args.book_ids.split(",") if b.strip()]:
+    if args.books:
+        for bid in [b.strip() for b in args.books.split(",") if b.strip()]:
             queue.append((int(bid), None))
 
-    if args.book_id and not args.book_ids and not args.category_ids:
-        queue.append((args.book_id, None))
+    if args.book and not args.books and not args.categories:
+        queue.append((args.book, None))
 
     # de-duplicate, keep first occurrence (and its category label)
     seen = set()
@@ -5663,15 +5658,15 @@ def main():
         description="Scrape shamela.ws book(s)/categories to JSON + PDF"
     )
     parser.add_argument(
-        "--book_id", type=int, default=None, help="Single Shamela book ID (legacy)"
+        "--book", type=int, default=None, help="Single Shamela book ID"
     )
     parser.add_argument(
-        "--book_ids",
+        "--books",
         default=None,
         help="Comma-separated list of book IDs, e.g. 12762,667",
     )
     parser.add_argument(
-        "--category_ids",
+        "--categories",
         default=None,
         help="Comma-separated list of category IDs, e.g. 13,33,40",
     )
@@ -5734,13 +5729,6 @@ def main():
         help="Generate PDF output alongside other formats. "
         "PDF is on by default unless --md or --docx is given. "
         "Pass --pdf explicitly to force PDF together with --md.",
-    )
-    parser.add_argument(
-        "--pdf_only",
-        action="store_true",
-        help="Rebuild output document(s) from already-scraped data on disk, "
-        "skip network page-scraping. Combine with --docx to rebuild a DOCX "
-        "only, no network.",
     )
     parser.add_argument(
         "--docx",
@@ -5869,9 +5857,9 @@ def main():
         print_status(manifest)
         return
 
-    if not args.book_id and not args.book_ids and not args.category_ids:
+    if not args.book and not args.books and not args.categories:
         parser.error(
-            "Provide at least one of --book_id, --book_ids, or --category_ids (or --status)"
+            "Provide at least one of --book, --books, or --categories (or --status)"
         )
 
     session = CloudflareCookieManager(
