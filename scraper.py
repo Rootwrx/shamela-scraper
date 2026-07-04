@@ -5145,7 +5145,7 @@ def process_book(
     # entirely by the "already done" check below, even when --docx is
     # asking for a format that was never actually built yet.
     # Rebuild from cached data if we can skip network (--pdf_only, --docx, --override)
-    if (args.pdf_only or args.docx or args.override) and entry.get("dir") and not args.force:
+    if (args.pdf_only or args.docx or args.md or args.override) and entry.get("dir") and not args.force:
         bd = Path(out_dir) / entry["dir"]
         meta = load_json(bd / "meta.json")
         author_info = load_json(bd / "author_info.json")
