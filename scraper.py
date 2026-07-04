@@ -4728,7 +4728,10 @@ def _md_emit_line(f, container, max_toc_level: int = -1) -> None:
                     heading_text = child.get_text(" ", strip=True)
                 shape = _HEADING_SHAPES.get(level_num, "")
                 shape_str = f"{shape} " if shape else ""
-                f.write(f"{'#' * (level_num + 1)} {shape_str}{heading_text}\n\n")
+                if level_num < 2:
+                    f.write(f"{'#' * (level_num + 1)} {shape_str}{heading_text}\n\n")
+                else:
+                    f.write(f"**{shape_str}{heading_text}**\n\n")
                 continue
             if "toc-numbered-heading" in classes:
                 continue
