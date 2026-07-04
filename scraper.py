@@ -151,7 +151,7 @@ STYLE_CFG: dict = {}
 DEFAULT_STYLE_CFG = {
     "fonts": {"heading": "Scheherazade New", "body": "Scheherazade New"},
     "body_size_pdf": 14,
-    "body_size_docx": 15,
+    "body_size_docx": 18,
     "palette": {
         "gold": "#c99200",
         "gold_light": "#e8b830",
@@ -3204,10 +3204,6 @@ def resolve_book_headings(meta: dict, pages_iter):
         ]
         page["unanchored_toc_entries"] = unanchored
 
-        if unanchored:
-            titles = ", ".join(f'"{u["number"]}. {u["label"]}"' for u in unanchored)
-            print(f"  [implicit] page {pid}: {titles}")
-
         yield page
 
 
@@ -3215,24 +3211,118 @@ def materialize_resolved_pages(
     meta: dict, pages_path: Path, resolved_path: Path
 ) -> int:
     count = 0
-    all_implicits: list[dict] = []
     with open(resolved_path, "w", encoding="utf-8") as out_fh:
         for page in resolve_book_headings(meta, iter_pages_jsonl(pages_path)):
             out_fh.write(_fast_json(page, indent=False) + "\n")
             count += 1
-            pid = page.get("url_page_id") or page.get("page_id")
-            for u in (page.get("unanchored_toc_entries") or []):
-                all_implicits.append({
-                    "page": pid,
-                    "number": u["number"],
-                    "label": u["label"],
-                })
-    if all_implicits:
-        implicits_path = resolved_path.with_name("implicits.json")
-        with open(implicits_path, "w", encoding="utf-8") as f:
-            json.dump(all_implicits, f, ensure_ascii=False, indent=2)
-        print(f"    → {len(all_implicits)} implicit headings saved → {implicits_path}")
     return count
+
+
+def _match_implicit_headings_cross_page(resolved_path: Path) -> None:
+    """Match implicit TOC headings against actual text on any page.
+
+    When the TOC page pointer is off (heading text on page A but TOC says
+    page B), the heading becomes implicit on the wrong page.  This function
+    re-reads all resolved pages, finds implicit headings whose text actually
+    appears on a different page, and moves them there as matched headings.
+    """
+    pages: list[dict] = []
+    with open(resolved_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                pages.append(json.loads(line))
+
+    # Build flat_lines index for every page (same as _locate_toc_headings_in_page)
+    page_flat: dict[int, list[tuple[int, int, str]]] = {}
+    for page_idx, page in enumerate(pages):
+        flat: list[tuple[int, int, str]] = []
+        for pi, para in enumerate(page.get("paragraphs") or []):
+            if para.get("type") == "hamesh":
+                continue
+            for li, line in enumerate(para.get("lines", [])):
+                stripped = _bracket_stripped(line)
+                norm = _normalize_ar(stripped) if stripped is not None else _normalize_ar(line)
+                if norm:
+                    flat.append((pi, li, norm))
+        page_flat[page_idx] = flat
+
+    matched_any = False
+
+    for src_idx, page in enumerate(pages):
+        for h in list(page.get("resolved_headings") or []):
+            if not h.get("implicit") or h.get("auto"):
+                continue
+            norm_label = _normalize_ar(h["text"])
+            if not norm_label:
+                continue
+
+            # Search all OTHER pages for this text
+            for tgt_idx, tgt_flat in page_flat.items():
+                if tgt_idx == src_idx:
+                    continue
+                found_span, _ = _find_label_in_lines(norm_label, tgt_flat, 0)
+                if not found_span:
+                    continue
+                start, end = found_span
+                positions = [(tgt_flat[i][0], tgt_flat[i][1]) for i in range(start, end)]
+
+                # Move the heading: remove from source, add as matched on target
+                page["resolved_headings"] = [
+                    other for other in page["resolved_headings"] if other is not h
+                ]
+                h["implicit"] = False
+                h["matched"] = True
+                h["positions"] = positions
+                h["suppress"] = [list(p) for p in positions]
+                h["at_page_top"] = False
+                h.pop("before_child", None)
+                h.pop("_before_child_slot", None)
+                pages[tgt_idx].setdefault("resolved_headings", []).append(h)
+                matched_any = True
+                src_pid = page.get("url_page_id") or page.get("page_id", src_idx + 1)
+                tgt_pid = pages[tgt_idx].get("url_page_id") or pages[tgt_idx].get("page_id", tgt_idx + 1)
+                print(f"    [match] implicit \"{h['text']}\" page {src_pid} → {tgt_pid}")
+                break
+
+    if matched_any:
+        with open(resolved_path, "w", encoding="utf-8") as f:
+            for page in pages:
+                f.write(json.dumps(page, ensure_ascii=False) + "\n")
+        print(f"    → {resolved_path} updated with cross-page heading matches")
+
+    _write_final_implicits(resolved_path, pages)
+
+
+def _write_final_implicits(
+    resolved_path: Path,
+    pages: list[dict] | None = None,
+) -> None:
+    """Re-write implicits.json from the current state of resolved headings."""
+    if pages is None:
+        pages = []
+        with open(resolved_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    pages.append(json.loads(line))
+    remaining: list[dict] = []
+    for page in pages:
+        pid = page.get("url_page_id") or page.get("page_id")
+        for h in page.get("resolved_headings") or []:
+            if h.get("implicit"):
+                remaining.append({
+                    "page": pid,
+                    "number": h["number"],
+                    "label": h["text"],
+                })
+    implicits_path = resolved_path.with_name("implicits.json")
+    with open(implicits_path, "w", encoding="utf-8") as f:
+        json.dump(remaining, f, ensure_ascii=False, indent=2)
+    if remaining:
+        print(f"    → {len(remaining)} implicit headings remain → {implicits_path}")
+    else:
+        print(f"    → all implicit headings resolved → {implicits_path}")
 
 
 def _renumber_headings_by_document_order(resolved_path: Path) -> None:
@@ -3538,6 +3628,7 @@ def _render_page_html(
     vol_boundaries: set,
     vol_num_ref: list,
     max_toc_level: int = 3,
+    no_implicit: bool = False,
 ) -> tuple[str, int]:
     parts = []
     pid = page.get("page_id")
@@ -3627,8 +3718,14 @@ def _render_page_html(
         if h.get("implicit"):
             if h.get("_skip_outline"):
                 return ""
-            label_text = f"{num}. {_e(display)}" if num else _e(display)
-            return f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{label_text}</p>\n'
+            bm_label = f"{num}. {_e(display)}" if num else _e(display)
+            if no_implicit:
+                return f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{bm_label}</p>\n'
+            label_html = _e(display)
+            return (
+                f'<p class="toc-bookmark-anchor toc-bm-{nh_level}">{bm_label}</p>\n'
+                f'<p class="toc-numbered-heading toc-nh-{nh_level}">{shape_prefix}{label_html}</p>\n'
+            )
         
         # Use raw_line (containing footnote/spans) if available
         if h.get("raw_line"):
@@ -3827,6 +3924,7 @@ def build_html_to_file(
     volume_label: str | None = None,
     columns: int = 1,
     fast: bool = False,
+    no_implicit: bool = False,
 ) -> None:
     """
     Stream-write the full HTML document to *out_path* one page at a time.
@@ -4011,7 +4109,8 @@ def build_html_to_file(
                 vol_num[0] += 1
 
             frag, _ = _render_page_html(
-                page, toc_by_page, vol_boundaries, vol_num, max_toc_level
+                page, toc_by_page, vol_boundaries, vol_num, max_toc_level,
+                no_implicit=no_implicit,
             )
             buf.append(frag)
             first_page = False
@@ -4036,6 +4135,7 @@ def build_pdf(
     volume_label: str | None = None,
     columns: int = 1,
     fast: bool = False,
+    no_implicit: bool = False,
 ):
     """
     Build a PDF from *pages_iter* (list or generator of page dicts).
@@ -4064,6 +4164,7 @@ def build_pdf(
         volume_label=volume_label,
         columns=columns,
         fast=fast,
+        no_implicit=no_implicit,
     )
     print(f"  [html] done ({html_path.stat().st_size // 1024} KB)")
 
@@ -4118,16 +4219,16 @@ _HEADING_SHAPES = {
 }
 
 _DOCX_LEVEL_COLORS = {
-    0: (_DOCX_GOLD_L, 19),
-    1: (_DOCX_RUST, 18),
-    2: (_DOCX_TEAL, 17),
-    3: (_DOCX_SEPIA, 16),
-    4: ("2D7A4F", 16),
-    5: ("7B2D8E", 16),
-    6: ("C07A1A", 16),
-    7: ("C0392B", 16),
-    8: ("1E7A9E", 16),
-    9: ("C06080", 16),
+    0: (_DOCX_GOLD_L, 26),
+    1: (_DOCX_RUST, 24),
+    2: (_DOCX_TEAL, 22),
+    3: (_DOCX_SEPIA, 20),
+    4: ("2D7A4F", 19),
+    5: ("7B2D8E", 18),
+    6: ("C07A1A", 17),
+    7: ("C0392B", 17),
+    8: ("1E7A9E", 17),
+    9: ("C06080", 17),
 }
 
 
@@ -4481,6 +4582,7 @@ def _docx_setup_styles(doc) -> None:
 
     body_style = doc.styles.add_style("Shamela Body", WD_STYLE_TYPE.PARAGRAPH)
     body_style.base_style = normal
+    body_style.font.bold = True
     body_style.paragraph_format.space_after = Pt(4)
     body_style.paragraph_format.line_spacing = 1.08
     body_style.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.LEFT
@@ -4637,6 +4739,7 @@ def build_md(
     pages_iter,
     out_path: str,
     volume_label: str | None = None,
+    no_implicit: bool = False,
 ) -> None:
     """Build a .md Markdown file from *pages_iter* with proper heading
     outlines, volume dividers, and metadata front-matter.
@@ -4757,7 +4860,10 @@ def build_md(
             result.append("")
             vol_num[0] += 1
 
-        frag, _ = _render_page_html(page, toc_by_page, vol_boundaries, vol_num, max_toc_level)
+        frag, _ = _render_page_html(
+            page, toc_by_page, vol_boundaries, vol_num, max_toc_level,
+            no_implicit=no_implicit,
+        )
         first_page = False
         n_pages += 1
         if not frag.strip():
@@ -4782,6 +4888,7 @@ def build_docx(
     pages_iter,
     out_path: str,
     volume_label: str | None = None,
+    no_implicit: bool = False,
 ) -> None:
     """Build a .docx from *pages_iter*, mirroring the PDF's cover, real Word
     Heading styles (for native outline navigation), per-level heading
@@ -4936,7 +5043,10 @@ def build_docx(
             _docx_add_run(vp, f"الجزء {vol_label}", font_name=_DOCX_FONT_HEAD, size=17, bold=True, color_hex=_DOCX_GOLD)
             vol_num[0] += 1
 
-        frag, _ = _render_page_html(page, toc_by_page, vol_boundaries, vol_num, max_toc_level)
+        frag, _ = _render_page_html(
+            page, toc_by_page, vol_boundaries, vol_num, max_toc_level,
+            no_implicit=no_implicit,
+        )
         first_page = False
         n_pages += 1
         if not frag.strip():
@@ -5200,8 +5310,12 @@ def _build_book_outputs(
     print(f"[*] Resolving headings for book {book_id} ...")
     n_resolved = materialize_resolved_pages(meta, pages_path, resolved_path)
     print(f"    → {n_resolved} pages resolved → {resolved_path}")
+    _match_implicit_headings_cross_page(resolved_path)
     _renumber_headings_by_document_order(resolved_path)
     print(f"    → headings renumbered by content order")
+
+    # Re-write implicits.json from final state after all processing
+    _write_final_implicits(resolved_path)
 
     # ── assemble combined JSON ───────────────────────────────────────────
     # Enabled via --json flag.  Skipped by default to save RAM on large books
@@ -5267,8 +5381,8 @@ def _build_book_outputs(
         want_docx = getattr(args, "docx", False)
         want_md = getattr(args, "md", False)
         want_pdf = getattr(args, "pdf", None)
-        # --md implies --no-pdf unless --pdf is explicitly passed
-        if want_md and want_pdf is None:
+        # --docx and --md imply --no-pdf unless --pdf is explicitly passed
+        if (want_docx or want_md) and want_pdf is None:
             want_pdf = False
         elif want_pdf is None:
             want_pdf = True
@@ -5311,6 +5425,7 @@ def _build_book_outputs(
                         volume_label=label,
                         columns=getattr(args, "columns", 1),
                         fast=getattr(args, "fast", False),
+                        no_implicit=getattr(args, "no_implicit", False),
                     )
             else:
                 pdf_path = book_dir / f"book_{book_id}.pdf"
@@ -5336,6 +5451,7 @@ def _build_book_outputs(
                     flush_every=getattr(args, "flush_every", 50),
                     columns=getattr(args, "columns", 1),
                     fast=getattr(args, "fast", False),
+                    no_implicit=getattr(args, "no_implicit", False),
                 )
 
         # ── DOCX (per-juz if volumes exist, otherwise single) ──────────────
@@ -5365,7 +5481,8 @@ def _build_book_outputs(
                         docx_vol_iter, vol_pages, include_juz_prefix=False
                     )
                     build_docx(
-                        meta, author_info, docx_vol_iter, str(docx_path), volume_label=label
+                        meta, author_info, docx_vol_iter, str(docx_path), volume_label=label,
+                        no_implicit=getattr(args, "no_implicit", False),
                     )
             else:
                 docx_path = book_dir / f"book_{book_id}.docx"
@@ -5383,7 +5500,8 @@ def _build_book_outputs(
                         )
                 else:
                     print(f"[*] Building DOCX for book {book_id} ...")
-                build_docx(meta, author_info, docx_pages_iter, str(docx_path))
+                build_docx(meta, author_info, docx_pages_iter, str(docx_path),
+                           no_implicit=getattr(args, "no_implicit", False))
 
         # ── Markdown (per-juz if volumes exist, otherwise single) ──────────
         if want_md:
@@ -5412,7 +5530,8 @@ def _build_book_outputs(
                         md_vol_iter, vol_pages, include_juz_prefix=False
                     )
                     build_md(
-                        meta, author_info, md_vol_iter, str(md_path), volume_label=label
+                        meta, author_info, md_vol_iter, str(md_path), volume_label=label,
+                        no_implicit=getattr(args, "no_implicit", False),
                     )
             else:
                 md_path = book_dir / f"book_{book_id}.md"
@@ -5430,7 +5549,8 @@ def _build_book_outputs(
                         )
                 else:
                     print(f"[*] Building MD for book {book_id} ...")
-                build_md(meta, author_info, md_pages_iter, str(md_path))
+                build_md(meta, author_info, md_pages_iter, str(md_path),
+                         no_implicit=getattr(args, "no_implicit", False))
 
     # Only mark "done" when scraping was actually performed and completed.
     # --pdf_only must never change the scraping status on its own, unless we
@@ -5686,6 +5806,16 @@ def main():
         "(Arabic letter-stretch justification) looks nicer but is a major "
         "WeasyPrint speed sink — this can cut PDF build time drastically "
         "on large books, at the cost of plain justify instead of kashida.",
+    )
+    parser.add_argument(
+        "--no-implicit",
+        action="store_true",
+        dest="no_implicit",
+        default=False,
+        help="Suppress implicit TOC headings (headings known from the TOC "
+        "but not found as visible text on the page). By default they are "
+        "rendered as outline entries in the DOCX; pass --no-implicit to "
+        "omit them entirely.",
     )
     parser.add_argument(
         "--style_config",
