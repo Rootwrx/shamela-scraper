@@ -4592,7 +4592,7 @@ def _docx_setup_styles(doc) -> None:
     body_style.font.bold = True
     body_style.font.cs_bold = True
     body_style.paragraph_format.space_after = Pt(4)
-    body_style.paragraph_format.line_spacing = 1.08
+    body_style.paragraph_format.line_spacing = 1.0
     body_style.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.LEFT
     _docx_style_set_bidi(body_style)
 
