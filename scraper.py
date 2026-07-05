@@ -3222,6 +3222,17 @@ def _match_implicit_headings_cross_page(resolved_path: Path) -> None:
     page B), the heading becomes implicit on the wrong page.  This function
     re-reads all resolved pages, finds implicit headings whose text actually
     appears on a different page, and moves them there as matched headings.
+
+    Safety gates (added to prevent false-positive moves that scramble the
+    outline — see bug where surah names like "الأنفال" appearing as casual
+    body text on a page would pull the entire surah heading there):
+
+      1. **Bracket check** — the matched line on the target page must be a
+         bracket heading (``[label]``).  Casual word occurrences in body
+         paragraphs are ignored.
+      2. **Proximity gate** — the target page_id must be within 5 pages of
+         the original source page_id.  This prevents moves across hundreds
+         of pages when a common word happens to appear far away.
     """
     pages: list[dict] = []
     with open(resolved_path, "r", encoding="utf-8") as f:
@@ -3254,15 +3265,50 @@ def _match_implicit_headings_cross_page(resolved_path: Path) -> None:
             if not norm_label:
                 continue
 
+            src_pid = page.get("url_page_id") or page.get("page_id", src_idx + 1)
+
             # Search all OTHER pages for this text
             for tgt_idx, tgt_flat in page_flat.items():
                 if tgt_idx == src_idx:
                     continue
+
+                # ── proximity gate: page_id must be within 5 ───────────────
+                tgt_pid = pages[tgt_idx].get("url_page_id") or pages[tgt_idx].get("page_id", tgt_idx + 1)
+                if tgt_pid is None or src_pid is None:
+                    continue
+                if abs(tgt_pid - src_pid) > 5:
+                    continue
+
                 found_span, _ = _find_label_in_lines(norm_label, tgt_flat, 0)
                 if not found_span:
                     continue
                 start, end = found_span
                 positions = [(tgt_flat[i][0], tgt_flat[i][1]) for i in range(start, end)]
+
+                # ── bracket check: the matched line must be a bracket heading
+                #    (e.g. [الأنفال]), not a casual word in body text.
+                pi, li = positions[0]
+                paras = pages[tgt_idx].get("paragraphs") or []
+                if pi < len(paras):
+                    lines = paras[pi].get("lines", [])
+                    if li < len(lines):
+                        raw_line = lines[li]
+                        if _bracket_stripped(raw_line) is None:
+                            # For multi-position matches, check if ANY position
+                            # is a bracket heading
+                            bracket_found = False
+                            for pos_pi, pos_li in positions:
+                                if pos_pi < len(paras):
+                                    pos_lines = paras[pos_pi].get("lines", [])
+                                    if pos_li < len(pos_lines) and _bracket_stripped(pos_lines[pos_li]) is not None:
+                                        bracket_found = True
+                                        break
+                            if not bracket_found:
+                                continue  # not a bracket heading — false positive
+                    else:
+                        continue
+                else:
+                    continue
 
                 # Move the heading: remove from source, add as matched on target
                 page["resolved_headings"] = [
@@ -3277,8 +3323,6 @@ def _match_implicit_headings_cross_page(resolved_path: Path) -> None:
                 h.pop("_before_child_slot", None)
                 pages[tgt_idx].setdefault("resolved_headings", []).append(h)
                 matched_any = True
-                src_pid = page.get("url_page_id") or page.get("page_id", src_idx + 1)
-                tgt_pid = pages[tgt_idx].get("url_page_id") or pages[tgt_idx].get("page_id", tgt_idx + 1)
                 print(f"    [match] implicit \"{h['text']}\" page {src_pid} → {tgt_pid}")
                 break
 
@@ -3402,6 +3446,11 @@ def _renumber_headings_by_document_order(resolved_path: Path) -> None:
     # Y (when Shamela's TOC page pointer is off).  Match them here so the
     # heading appears at the correct content position instead of creating
     # two separate entries (an implicit at the wrong page + an auto orphan).
+    #
+    # Safety gate: a proximity limit (5 pages) prevents matching an
+    # implicit heading from one part of the book with an auto heading
+    # that shares the same label text but appears hundreds of pages away.
+    MAX_CROSS_PAGE_DIST = 5
     implicit_by_norm: dict[str, list[tuple[int, dict]]] = {}
     auto_by_norm: dict[str, list[tuple[int, dict]]] = {}
     for page_idx, page in enumerate(pages):
@@ -3418,12 +3467,15 @@ def _renumber_headings_by_document_order(resolved_path: Path) -> None:
             continue
         for auto_page_idx, auto_h in auto_entries:
             # Find the nearest implicit heading on a DIFFERENT page
+            # (subject to proximity gate)
             best = None
             best_dist = None
             for imp_page_idx, imp_h in implicit_entries:
                 if imp_page_idx == auto_page_idx:
                     continue
                 dist = abs(imp_page_idx - auto_page_idx)
+                if dist > MAX_CROSS_PAGE_DIST:
+                    continue
                 if best_dist is None or dist < best_dist:
                     best = (imp_page_idx, imp_h)
                     best_dist = dist
@@ -4391,19 +4443,24 @@ def _docx_add_chapter_heading(doc, p_tag) -> None:
 
 
 def _docx_add_visible_heading(doc, text: str, level_num: int) -> None:
-    """Visible, styled heading paragraph for on-page display only.
+    """Visible, styled heading paragraph using a real Word "Heading N"
+    style, so it appears as an actual heading directly in the document
+    body (and, as a normal consequence of using a real heading style,
+    also in the Navigation Pane / any TOC field — that part is just how
+    Word headings work, not something built separately).
 
-    Deliberately NOT a Word "Heading N" style, so it does not create an
-    entry in the Navigation Pane / outline — exactly like the PDF's
-    `.toc-numbered-heading`, which explicitly sets `bookmark-level: none`.
-    The outline entry (carrying the numbering) comes solely from the
-    paired invisible anchor via `_docx_add_invisible_heading`, so numbers
-    never appear in the visible content, only in the outline.
+    level_num 0 → Heading 1, level_num 1 → Heading 2, etc. (capped at
+    Heading 9, Word's maximum built-in heading level).
     """
     if not text.strip():
         return
     color, size = _DOCX_LEVEL_COLORS.get(min(level_num, 9), _DOCX_LEVEL_COLORS[9])
-    para = doc.add_paragraph()
+    word_level = min(level_num + 1, 9)
+    para = doc.add_heading(level=word_level)
+    # add_heading() may leave a stray empty run in some python-docx
+    # versions — drop it so our own styled runs are the only content.
+    for run in list(para.runs):
+        run.text = ""
     para.alignment = WD_ALIGN_PARAGRAPH.LEFT
     _docx_set_bidi(para)
     para.paragraph_format.space_before = Pt(8)
@@ -4421,44 +4478,6 @@ def _docx_strip_number_prefix(text: str) -> str:
     """Strip a leading 'N. ' / '1.2. ' style number label off heading text,
     so the visible on-page paragraph never repeats the outline's numbering."""
     return _DOCX_NUM_PREFIX_RE.sub("", text, count=1)
-
-
-def _docx_add_invisible_heading(doc, text: str, level_num: int) -> None:
-    """A heading that exists purely for outline/navigation purposes.
-
-    Every level produces a Word heading style entry (Navigation Pane /
-    any TOC field), same as the PDF's bookmark-level behaviour where all
-    heading levels appear in the outline.  Level 0 (book titles), levels
-    1-3 (chapters/sections), and levels 4+ (deep sub-headings) all get
-    outline entries.
-
-    Mirrors the PDF's `.toc-bookmark-anchor` paragraphs: in the PDF, every
-    outline/bookmark entry is generated from these anchors specifically
-    (bookmark-level lives on `.toc-bm-N`, while the *visible*
-    `.toc-numbered-heading` explicitly sets `bookmark-level: none`). For
-    "implicit" TOC entries — headings the scraper knows about from the
-    book's TOC but never found matching visible text for on the page —
-    the PDF renders *only* this anchor (1pt, height 0, invisible on the
-    page) so the title still shows up in the PDF's outline.
-
-    Word has no equivalent of an invisible-but-indexed element, so we add
-    a real "Heading N" paragraph (so it lands in the Navigation Pane / any
-    TOC field) but shrink it to be visually negligible on the page, same
-    intent as the PDF's invisible anchor.
-    """
-    if not text.strip():
-        return
-    word_level = min(level_num + 1, 9)
-    para = doc.add_heading(level=word_level)
-    para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    _docx_set_bidi(para)
-    para.paragraph_format.space_before = Pt(0)
-    para.paragraph_format.space_after = Pt(0)
-    para.paragraph_format.line_spacing = Pt(1)
-    run = para.add_run(text)
-    _docx_set_run_rtl_font(run, _DOCX_FONT_HEAD)
-    run.font.size = Pt(1)
-    run.font.color.rgb = RGBColor.from_string("FFFFFF")
 
 
 def _docx_add_hamesh(doc, div_tag) -> None:
@@ -4500,13 +4519,14 @@ def _docx_emit_fragment(doc, container, max_toc_level: int = -1) -> None:
     """Recursively walk the HTML fragment from _render_page_html and emit
     the equivalent native docx content.
 
-    max_toc_level: the deepest level present in the book's real TOC
-    (meta["toc_flat"]). Mirrors the PDF's `toc_bm_css`, which only defines
-    a `bookmark-level` CSS rule for levels 0..max_toc_level — anything
-    deeper (auto-detected bracket headings with no real TOC entry) is
-    rendered as a plain styled heading on the page but never reaches the
-    PDF's bookmark pane. -1 means "unknown / no TOC data", in which case
-    every heading is still added to the outline (safe fallback)."""
+    Every TOC-numbered heading (and every implicit/standalone TOC anchor)
+    is emitted as a real Word "Heading N" paragraph directly in the body,
+    so it's both visible on the page and, as a normal side effect of using
+    a real heading style, listed in the Navigation Pane / any TOC field.
+
+    max_toc_level is kept for signature compatibility with callers and is
+    still threaded through the recursive div-wrapper calls, but no longer
+    gates whether a heading gets an outline entry."""
     elements = [c for c in container.children if getattr(c, "name", None)]
     for idx, child in enumerate(elements):
         classes = child.get("class", []) if hasattr(child, "get") else []
@@ -4531,29 +4551,22 @@ def _docx_emit_fragment(doc, container, max_toc_level: int = -1) -> None:
                 m = re.search(r"toc-bm-(\d+)", " ".join(classes))
                 level_num = min(int(m.group(1)), 9) if m else 6
                 anchor_text = child.get_text(" ", strip=True)
-                # In-range → this level genuinely exists in the book's real
-                # TOC, so it gets a Word outline entry (numbered), same as
-                # the PDF's bookmark pane. Out-of-range (deeper than the
-                # real TOC ever goes) → an auto-detected heading with no
-                # TOC backing, so no outline entry — visible content only.
-                in_toc_range = max_toc_level < 0 or level_num <= max_toc_level
                 if has_visible_pair:
-                    # Source the visible text from the anchor (full,
-                    # correctly TOC-matched title) rather than the literal
-                    # on-page paragraph, which can be truncated.  The number
-                    # prefix is stripped here, so it appears only in the
-                    # Navigation Pane (via _docx_add_invisible_heading) and
-                    # never in the visible page content.
+                    # Source the text from the anchor (full, correctly
+                    # TOC-matched title) rather than the literal on-page
+                    # paragraph, which can be truncated. The number prefix
+                    # is stripped since the level's shape glyph already
+                    # conveys the level visually.
                     visible_text = _docx_strip_number_prefix(anchor_text)
-                    if in_toc_range:
-                        _docx_add_invisible_heading(doc, anchor_text, level_num)
                     _docx_add_visible_heading(doc, visible_text, level_num)
                 else:
                     # Standalone anchor (an "implicit" TOC entry with no
-                    # visible text match on the page). Only add it to the
-                    # outline if it's genuinely within the real TOC's depth.
-                    if in_toc_range:
-                        _docx_add_invisible_heading(doc, anchor_text, level_num)
+                    # visible text match on the page) — still rendered as
+                    # a real heading in the content, just without a body
+                    # paragraph directly under it.
+                    _docx_add_visible_heading(
+                        doc, _docx_strip_number_prefix(anchor_text), level_num
+                    )
                 continue
             if "toc-numbered-heading" in classes:
                 # Its title text was already emitted above (sourced from
