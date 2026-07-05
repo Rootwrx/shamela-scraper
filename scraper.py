@@ -2557,9 +2557,20 @@ def _normalize_ar(s: str) -> str:
 def _bracket_stripped(line_html: str) -> str | None:
     plain = _plain_text(line_html).strip()
     m = re.match(r"^\[(.+)\]$", plain)
-    if m:
-        return m.group(1).strip(_BRACKET_STRIP_CHARS).strip()
-    return None
+    if not m:
+        return None
+    inner = m.group(1).strip()
+    # Peel any further nested wrapper pairs so a title alone on its own
+    # line still matches regardless of how it's bracketed in the source:
+    # [عنوان], [[عنوان]], [(عنوان)], etc.
+    _WRAP_PAIRS = {"[": "]", "(": ")", "（": "）", "「": "」", "【": "】"}
+    changed = True
+    while changed and len(inner) >= 2:
+        changed = False
+        if _WRAP_PAIRS.get(inner[0]) == inner[-1]:
+            inner = inner[1:-1].strip()
+            changed = True
+    return inner.strip(_BRACKET_STRIP_CHARS).strip()
 
 
 def _strip_title_brackets(line_html: str, label: str) -> str:
@@ -2867,13 +2878,6 @@ def _locate_toc_headings_in_page(
     for label, level, number, parent_text, parent_number in toc_pool:
         norm_label = _normalize_ar(label)
         found_span, keep_line = _find_label_in_lines(norm_label, flat_lines, cursor)
-        if not found_span:
-            # Search from page start — handles children whose text
-            # appears before their parent's position on the page
-            # (e.g. ملخص البحث before المقدمة in book 909).
-            found_span, keep_line = _find_label_in_lines(norm_label, flat_lines, 0)
-            if found_span and found_span[0] >= cursor:
-                found_span = None  # only accept matches before cursor
         if found_span:
             start, end = found_span
             positions = [
@@ -3216,20 +3220,24 @@ def materialize_resolved_pages(
 
 
 def _match_implicit_headings_cross_page(resolved_path: Path) -> None:
-    """Match implicit TOC headings against actual text on any page.
+    """Match implicit TOC headings against actual text within a ±5 page
+    window (including the heading's own source page).
 
     When the TOC page pointer is off (heading text on page A but TOC says
-    page B), the heading becomes implicit on the wrong page.  This function
-    re-reads all resolved pages, finds implicit headings whose text actually
-    appears on a different page, and moves them there as matched headings.
+    page B), or a child's text happens to sit before its parent's matched
+    position on the very same page, the heading becomes implicit / mis-
+    ordered.  This function re-reads all resolved pages, finds implicit
+    headings whose text actually appears within 5 pages either direction
+    (previous or next — including the same page), and moves/anchors them
+    there as matched headings.
 
     Safety gates (added to prevent false-positive moves that scramble the
     outline — see bug where surah names like "الأنفال" appearing as casual
     body text on a page would pull the entire surah heading there):
 
-      1. **Bracket check** — the matched line on the target page must be a
-         bracket heading (``[label]``).  Casual word occurrences in body
-         paragraphs are ignored.
+      1. **Bracket check** — the matched line must be a bracket heading
+         (``[label]``, ``[[label]]``, ``[(label)]``, ...). Casual word
+         occurrences in body paragraphs are ignored.
       2. **Proximity gate** — the target page_id must be within 5 pages of
          the original source page_id.  This prevents moves across hundreds
          of pages when a common word happens to appear far away.
@@ -3267,11 +3275,11 @@ def _match_implicit_headings_cross_page(resolved_path: Path) -> None:
 
             src_pid = page.get("url_page_id") or page.get("page_id", src_idx + 1)
 
-            # Search all OTHER pages for this text
+            # Search pages within the ±5 window, including this same page
+            # (a same-page match here means the label sits before the
+            # heading's original cursor position — e.g. a child's text
+            # printed ahead of its parent's matched line).
             for tgt_idx, tgt_flat in page_flat.items():
-                if tgt_idx == src_idx:
-                    continue
-
                 # ── proximity gate: page_id must be within 5 ───────────────
                 tgt_pid = pages[tgt_idx].get("url_page_id") or pages[tgt_idx].get("page_id", tgt_idx + 1)
                 if tgt_pid is None or src_pid is None:
@@ -3323,7 +3331,10 @@ def _match_implicit_headings_cross_page(resolved_path: Path) -> None:
                 h.pop("_before_child_slot", None)
                 pages[tgt_idx].setdefault("resolved_headings", []).append(h)
                 matched_any = True
-                print(f"    [match] implicit \"{h['text']}\" page {src_pid} → {tgt_pid}")
+                if tgt_idx == src_idx:
+                    print(f"    [match] implicit \"{h['text']}\" reordered on page {src_pid}")
+                else:
+                    print(f"    [match] implicit \"{h['text']}\" page {src_pid} → {tgt_pid}")
                 break
 
     if matched_any:
@@ -4442,7 +4453,9 @@ def _docx_add_chapter_heading(doc, p_tag) -> None:
     )
 
 
-def _docx_add_visible_heading(doc, text: str, level_num: int) -> None:
+def _docx_add_visible_heading(
+    doc, text: str, level_num: int, number: str | None = None
+) -> None:
     """Visible, styled heading paragraph using a real Word "Heading N"
     style, so it appears as an actual heading directly in the document
     body (and, as a normal consequence of using a real heading style,
@@ -4451,11 +4464,19 @@ def _docx_add_visible_heading(doc, text: str, level_num: int) -> None:
 
     level_num 0 → Heading 1, level_num 1 → Heading 2, etc. (capped at
     Heading 9, Word's maximum built-in heading level).
+
+    *number*, if given, is the TOC numbering string ("1", "1.2", "1.2.3")
+    for levels 0-2 (x, x.x, x.x.x) only. It is added as a hidden 1pt
+    white run at the very start of the SAME heading paragraph. The
+    Navigation Pane reads a heading's raw paragraph text regardless of
+    font size/color, so the number shows up there — but it's invisible
+    on the actual page, since the visible content never repeats the
+    outline's numbering (the level's shape glyph conveys depth instead).
     """
     if not text.strip():
         return
     color, size = _DOCX_LEVEL_COLORS.get(min(level_num, 9), _DOCX_LEVEL_COLORS[9])
-    word_level = min(level_num + 1, 9)
+    word_level = min(level_num + 2, 9)
     para = doc.add_heading(level=word_level)
     # add_heading() may leave a stray empty run in some python-docx
     # versions — drop it so our own styled runs are the only content.
@@ -4465,6 +4486,11 @@ def _docx_add_visible_heading(doc, text: str, level_num: int) -> None:
     _docx_set_bidi(para)
     para.paragraph_format.space_before = Pt(8)
     para.paragraph_format.space_after = Pt(4)
+    if number and level_num <= 2:
+        hidden_run = para.add_run(number + ". ")
+        _docx_set_run_rtl_font(hidden_run, _DOCX_FONT_HEAD)
+        hidden_run.font.size = Pt(1)
+        hidden_run.font.color.rgb = RGBColor.from_string("FFFFFF")
     shape = _HEADING_SHAPES.get(level_num, "")
     if shape:
         _docx_add_run(para, shape + " ", font_name=_DOCX_FONT_HEAD, size=max(11, size - 4), bold=True, color_hex=color)
@@ -4478,6 +4504,15 @@ def _docx_strip_number_prefix(text: str) -> str:
     """Strip a leading 'N. ' / '1.2. ' style number label off heading text,
     so the visible on-page paragraph never repeats the outline's numbering."""
     return _DOCX_NUM_PREFIX_RE.sub("", text, count=1)
+
+
+def _docx_extract_number_prefix(text: str) -> str | None:
+    """Return the leading TOC number ('1', '1.2', '1.2.3') from a heading
+    anchor's text, if present, with trailing separators/whitespace removed."""
+    m = _DOCX_NUM_PREFIX_RE.match(text)
+    if not m:
+        return None
+    return re.sub(r"[.\u066B\s]+$", "", m.group(0)).strip()
 
 
 def _docx_add_hamesh(doc, div_tag) -> None:
@@ -4551,21 +4586,23 @@ def _docx_emit_fragment(doc, container, max_toc_level: int = -1) -> None:
                 m = re.search(r"toc-bm-(\d+)", " ".join(classes))
                 level_num = min(int(m.group(1)), 9) if m else 6
                 anchor_text = child.get_text(" ", strip=True)
+                number_str = _docx_extract_number_prefix(anchor_text)
                 if has_visible_pair:
                     # Source the text from the anchor (full, correctly
                     # TOC-matched title) rather than the literal on-page
                     # paragraph, which can be truncated. The number prefix
-                    # is stripped since the level's shape glyph already
-                    # conveys the level visually.
+                    # is stripped from the visible text since the level's
+                    # shape glyph already conveys the level visually — the
+                    # number itself still reaches the Nav Pane via `number`.
                     visible_text = _docx_strip_number_prefix(anchor_text)
-                    _docx_add_visible_heading(doc, visible_text, level_num)
+                    _docx_add_visible_heading(doc, visible_text, level_num, number=number_str)
                 else:
                     # Standalone anchor (an "implicit" TOC entry with no
                     # visible text match on the page) — still rendered as
                     # a real heading in the content, just without a body
                     # paragraph directly under it.
                     _docx_add_visible_heading(
-                        doc, _docx_strip_number_prefix(anchor_text), level_num
+                        doc, _docx_strip_number_prefix(anchor_text), level_num, number=number_str
                     )
                 continue
             if "toc-numbered-heading" in classes:
@@ -5061,7 +5098,7 @@ def build_docx(
     vol_num = [1]
 
     if vol_starts_list and vol_labels_list:
-        vp = doc.add_heading(level=2)
+        vp = doc.add_heading(level=1)
         vp.alignment = WD_ALIGN_PARAGRAPH.LEFT
         _docx_set_bidi(vp)
         _docx_add_run(vp, f"الجزء {vol_labels_list[0]}", font_name=_DOCX_FONT_HEAD, size=17, bold=True, color_hex=_DOCX_GOLD)
@@ -5074,7 +5111,7 @@ def build_docx(
             vol_label = (
                 vol_labels_list[vol_num[0]] if vol_labels_list else str(vol_num[0] + 1)
             )
-            vp = doc.add_heading(level=2)
+            vp = doc.add_heading(level=1)
             _docx_page_break_before(vp)
             vp.alignment = WD_ALIGN_PARAGRAPH.LEFT
             _docx_set_bidi(vp)
