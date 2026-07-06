@@ -1077,6 +1077,16 @@ def parse_page_html(html: str) -> list[dict]:
             if re.fullmatch(r"\.+", plain):
                 continue
 
+            # Strip trailing sequences of 3+ dots (with optional spaces)
+            # used as visual line-fillers in Arabic books, e.g.
+            # "نص (١) . . . . . . . . . . . . . . . . . . . . ." → "نص (١)"
+            inner_html_clean = re.sub(r"(?:\s*\.\s*){3,}\s*$", "", inner_html).strip()
+            if inner_html_clean:
+                inner_html = inner_html_clean
+                plain = _strip_tags(inner_html).strip()
+            else:
+                continue
+
             if is_hamesh:
                 lines = [
                     frag.strip()
