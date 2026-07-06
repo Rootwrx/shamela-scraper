@@ -123,6 +123,7 @@ Usage
 
 import argparse
 import datetime
+import difflib
 import fcntl
 import itertools
 import json
@@ -133,6 +134,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -2727,16 +2729,29 @@ def _find_label_in_lines(
     # Fallback: label starts with the body line (e.g. TOC
     # "مهمة: توجيه..." vs body "مهمة").  The label has more
     # content after a separator that was normalised to space.
+    #
+    # Try the longest possible span first (up to 3 consecutive lines) so that
+    # a short generic section-label word split across lines from its actual
+    # title — e.g. body "فصل" (after a folio marker like "[ل ٥٥/أ]") on one
+    # line/paragraph followed by the real bracketed title
+    # "[تعجرُف المشركين في اسم «الرحمن»]" on the next — is anchored across
+    # BOTH lines against the full TOC label.  Checking span_len 1 alone would
+    # match just the bare word "فصل" and leave the real title an orphaned,
+    # un-headed paragraph rendered separately.
     for start in range(cursor, len(flat_lines)):
-        line_norm = flat_lines[start][2]
-        if (
-            len(norm_label) >= 4
-            and len(line_norm) >= 3
-            and len(line_norm) < len(norm_label)
-            and norm_label.startswith(line_norm)
-            and norm_label[len(line_norm)] == " "
-        ):
-            return (start, start + 1), False
+        for span_len in (3, 2, 1):
+            end = start + span_len
+            if end > len(flat_lines):
+                continue
+            line_norm = " ".join(flat_lines[i][2] for i in range(start, end))
+            if (
+                len(norm_label) >= 4
+                and len(line_norm) >= 3
+                and len(line_norm) < len(norm_label)
+                and norm_label.startswith(line_norm)
+                and norm_label[len(line_norm)] == " "
+            ):
+                return (start, end), False
 
     return None, False
 
@@ -3346,6 +3361,224 @@ def _match_implicit_headings_cross_page(resolved_path: Path) -> None:
     _write_final_implicits(resolved_path, pages)
 
 
+def _fuzzy_similarity(a: str, b: str) -> float:
+    """Similarity score between two already-normalized strings, used as the
+    last-resort "≥50% match" fallback.
+
+    Word overlap is scored with the Dice coefficient — 2 × common words /
+    (len(words_a) + len(words_b)) — the standard "percent of words shared"
+    measure. This is deliberately not:
+      - recall over the TOC label alone (common / len(words_a)): under-
+        scores cases where the body text is a shorter paraphrase of a
+        longer/more descriptive TOC label (e.g. TOC "قول لبيد: إلى الحول
+        ثم اسم السلام عليكما" vs body "البيت المنسوب إلى لبيد" — real
+        match, but only 40% recall over the 10-word label).
+      - overlap coefficient (common / min(len_a, len_b)): over-scores
+        short unrelated lines that happen to share a couple of filler
+        words with a much longer title (a 2-word line fully contained in
+        a 10-word label scores a perfect 1.0, which is a false positive).
+    Dice balances both sides, so a short line only scores high if it's
+    short *and* substantially built from the label's words.
+
+    A leading-word-prefix bonus is added on top: a real title-echo line
+    conventionally restates the label's own opening words verbatim (e.g.
+    both start "المثال السادس ..."), whereas a coincidentally-overlapping
+    line elsewhere in the body (e.g. a quoted verse that the TOC label
+    itself quotes) shares scattered *interior* words but not the leading
+    ones. Without this, a TOC label that embeds a quoted phrase can score
+    HIGHER against that quoted line's real occurrence in the body than
+    against the actual, correctly-placed title-echo line — because the
+    quote reproduces a long unbroken run of the label's words, while the
+    genuine echo only paraphrases most of it. The prefix bonus tips the
+    balance back toward the line that structurally opens the same way the
+    label does.
+
+    A character-level ratio (difflib.SequenceMatcher) is taken too and the
+    max of the two (before the prefix bonus) is used, since word overlap
+    alone is too coarse for short (1-2 word) titles.
+    """
+    words_a = a.split()
+    words_b = b.split()
+    if not words_a or not words_b:
+        return 0.0
+    ca, cb = Counter(words_a), Counter(words_b)
+    common = sum((ca & cb).values())
+    word_score = 2 * common / (len(words_a) + len(words_b))
+    char_score = difflib.SequenceMatcher(None, a, b).ratio()
+    base_score = max(word_score, char_score)
+
+    prefix_len = 0
+    for wa, wb in zip(words_a, words_b):
+        if wa != wb:
+            break
+        prefix_len += 1
+    prefix_bonus = prefix_len / len(words_a)
+
+    return min(1.0, base_score + prefix_bonus)
+
+
+def _find_best_fuzzy_match(
+    norm_label: str,
+    flat_lines: list[tuple[int, int, str]],
+    threshold: float = 0.5,
+) -> tuple[tuple[int, int] | None, float]:
+    """Scan every single line in flat_lines for the best partial-text match
+    against norm_label.
+
+    Deliberately single-line only (unlike _find_label_in_lines' 1-3 line
+    spans): the caller anchors the heading "one line before" whatever wins
+    here, so the winning position must be one real, specific line — joining
+    neighboring lines could let an unrelated line's content ride along with
+    a genuine match and report the wrong (earlier) anchor position.
+
+    Returns ((pi, li), score) for the best-scoring line at or above
+    `threshold`, or (None, 0.0) if nothing clears the bar.
+    """
+    best_pos: tuple[int, int] | None = None
+    best_score = 0.0
+    for pi, li, line_norm in flat_lines:
+        if not line_norm:
+            continue
+        score = _fuzzy_similarity(norm_label, line_norm)
+        if score > best_score:
+            best_score = score
+            best_pos = (pi, li)
+    if best_pos is not None and best_score >= threshold:
+        return best_pos, best_score
+    return None, 0.0
+
+
+def _fuzzy_match_remaining_implicits(
+    resolved_path: Path, threshold: float = 0.7, own_page_threshold: float = 0.5
+) -> None:
+    """Last-resort placement for headings still implicit after exact,
+    bracket, and cross-page matching have all had their shot.
+
+    For each remaining implicit heading, scan the same ±5 page window
+    (this time with NO bracket-only gate — everything stricter has already
+    failed) for the best partial-text match to the heading's label.
+
+    Two-tier acceptance: a match on the heading's OWN declared TOC page only
+    needs to clear `own_page_threshold` (looser — the declared page is
+    already strong evidence of correctness, and commentary often paraphrases
+    the label rather than repeating it verbatim, depressing the score of the
+    genuinely-correct line). A match on any OTHER page must clear the much
+    stricter `threshold`, since relocating a heading away from its declared
+    page should require high confidence — otherwise a coincidental echo of
+    the label's wording in unrelated nearby commentary (which can score
+    deceptively high) would wrongly displace it.
+
+    If a line clears the applicable bar, the heading is inserted one line
+    *before* that line — it borrows the line's position to anchor itself in
+    a plausible spot, but does not suppress or alter that line's own
+    content, since the match is only partial.
+
+    The heading stays flagged `implicit` (now also `fuzzy`) so it still
+    surfaces in implicits.json for manual review, even though it now
+    renders inline instead of floating at page-top.
+    """
+    pages: list[dict] = []
+    with open(resolved_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                pages.append(json.loads(line))
+
+    # Build flat_lines index for every page (same as the cross-page pass)
+    page_flat: dict[int, list[tuple[int, int, str]]] = {}
+    for page_idx, page in enumerate(pages):
+        flat: list[tuple[int, int, str]] = []
+        for pi, para in enumerate(page.get("paragraphs") or []):
+            if para.get("type") == "hamesh":
+                continue
+            for li, line in enumerate(para.get("lines", [])):
+                stripped = _bracket_stripped(line)
+                norm = _normalize_ar(stripped) if stripped is not None else _normalize_ar(line)
+                if norm:
+                    flat.append((pi, li, norm))
+        page_flat[page_idx] = flat
+
+    matched_any = False
+
+    for src_idx, page in enumerate(pages):
+        for h in list(page.get("resolved_headings") or []):
+            if not h.get("implicit") or h.get("auto"):
+                continue
+            norm_label = _normalize_ar(h["text"])
+            if not norm_label:
+                continue
+
+            src_pid = page.get("url_page_id") or page.get("page_id", src_idx + 1)
+
+            best_pos = None
+            best_score = 0.0
+            best_tgt_idx = None
+            best_distance = None
+            for tgt_idx, tgt_flat in page_flat.items():
+                tgt_pid = pages[tgt_idx].get("url_page_id") or pages[tgt_idx].get("page_id", tgt_idx + 1)
+                if tgt_pid is None or src_pid is None:
+                    continue
+                distance = abs(tgt_pid - src_pid)
+                if distance > 5:
+                    continue
+                local_threshold = own_page_threshold if distance == 0 else threshold
+                pos, score = _find_best_fuzzy_match(norm_label, tgt_flat, local_threshold)
+                if pos is None:
+                    continue
+                # Prefer the page CLOSEST to the heading's own declared TOC
+                # page over the single highest-scoring line anywhere in the
+                # window. Commentary sections frequently restate a nearby
+                # heading's exact phrase almost verbatim while discussing a
+                # *different* topic (e.g. a numbered list item quoting the
+                # phrase in passing) — that coincidental echo can easily
+                # outscore the correct, but more loosely-worded, occurrence
+                # on the heading's real page.  Distance to the declared page
+                # is a much stronger correctness signal than raw similarity,
+                # so it takes priority; score only breaks ties at equal
+                # distance.
+                if (
+                    best_pos is None
+                    or distance < best_distance
+                    or (distance == best_distance and score > best_score)
+                ):
+                    best_score = score
+                    best_pos = pos
+                    best_tgt_idx = tgt_idx
+                    best_distance = distance
+
+            if best_pos is None:
+                continue
+
+            pi, li = best_pos
+            page["resolved_headings"] = [
+                other for other in page["resolved_headings"] if other is not h
+            ]
+            h["fuzzy"] = True
+            h["fuzzy_score"] = round(best_score, 2)
+            h["positions"] = [(pi, li)]
+            h["suppress"] = []  # borrow the line's position only; keep its own text intact
+            h["at_page_top"] = False
+            h.pop("before_child", None)
+            h.pop("_before_child_slot", None)
+            pages[best_tgt_idx].setdefault("resolved_headings", []).append(h)
+            matched_any = True
+            tgt_pid = pages[best_tgt_idx].get("url_page_id") or pages[best_tgt_idx].get(
+                "page_id", best_tgt_idx + 1
+            )
+            print(
+                f"    [fuzzy] implicit \"{h['text']}\" placed before nearest "
+                f"match ({best_score:.0%}) on page {tgt_pid}"
+            )
+
+    if matched_any:
+        with open(resolved_path, "w", encoding="utf-8") as f:
+            for page in pages:
+                f.write(json.dumps(page, ensure_ascii=False) + "\n")
+        print(f"    → {resolved_path} updated with fuzzy-matched heading placements")
+
+    _write_final_implicits(resolved_path, pages)
+
+
 def _write_final_implicits(
     resolved_path: Path,
     pages: list[dict] | None = None,
@@ -3566,8 +3799,22 @@ def _renumber_headings_by_document_order(resolved_path: Path) -> None:
             parent_level = ph["level"]
             if parent_level >= level:
                 continue
-            # Never promote auto/implicit headings to root level
-            if parent_level == 0 and (heading.get("auto") or heading.get("implicit")):
+            # Never promote a heading to root level based on a position we
+            # don't actually trust: auto headings have no TOC-verified text,
+            # and an implicit heading that's still floating at page-top
+            # (at_page_top=True) was never actually found in the content —
+            # its "position" is just a placeholder, not real evidence of
+            # where it belongs. But an implicit heading that the cross-page
+            # or fuzzy-match passes anchored to real text (at_page_top is
+            # explicitly cleared to False by those passes) DOES have a
+            # genuine content position and should be promoted just like a
+            # normally-matched heading — otherwise a heading correctly
+            # relocated ahead of its TOC parent keeps a stale child number
+            # (e.g. "1.1") while rendering physically above "1.".
+            if parent_level == 0 and (
+                heading.get("auto")
+                or (heading.get("implicit") and heading.get("at_page_top"))
+            ):
                 continue
             heading["_level_promoted"] = True
             heading["level"] = parent_level
@@ -3859,6 +4106,13 @@ def _render_page_html(
                     else:
                         return body
                 i += 1
+            # Consume any trailing combining marks (tashkeel) that belong to
+            # the last matched base letter but sit just past it in the raw
+            # string. If left in place, a lone diacritic with no base letter
+            # renders as an orphaned dotted-circle glyph (U+25CC) in
+            # Arabic-aware fonts once it becomes the start of the remainder.
+            while i < len(body) and not _normalize_ar(body[i]):
+                i += 1
             remaining = body[i:].strip().lstrip(" ,.-،:")
             return remaining
         return body
@@ -3932,8 +4186,21 @@ def _render_page_html(
                                         f"<{tag}>{_color_delimited_text(body_line)}</{tag.split()[0]}>"
                                     )
                         continue
-                    # All artificial headings → show body as-is
+                    # All artificial headings → body usually differs from the
+                    # label (page-top placements are just guesses), but a
+                    # fuzzy-matched implicit heading (_fuzzy_match_remaining_implicits)
+                    # is deliberately anchored to a body line that closely
+                    # echoes its label text. When that echo is a near-exact
+                    # match, printing the line as-is duplicates the heading
+                    # (heading shown in gold, then the same words again right
+                    # below as body text). Strip the label prefix here too,
+                    # same as the real-heading branch above.
                     body_line = line.strip()
+                    for ah in headings_here:
+                        stripped = _strip_heading_prefix(body_line, ah["text"])
+                        if stripped != body_line:
+                            body_line = stripped
+                            break
                     if body_line:
                         tag = 'p class="chapter-heading"' if ptype == "heading" else "p"
                         parts.append(f"<{tag}>{_color_delimited_text(body_line)}</{tag.split()[0]}>")
@@ -5384,6 +5651,7 @@ def _build_book_outputs(
     n_resolved = materialize_resolved_pages(meta, pages_path, resolved_path)
     print(f"    → {n_resolved} pages resolved → {resolved_path}")
     _match_implicit_headings_cross_page(resolved_path)
+    _fuzzy_match_remaining_implicits(resolved_path)
     _renumber_headings_by_document_order(resolved_path)
     print(f"    → headings renumbered by content order")
 
