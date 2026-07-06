@@ -1077,10 +1077,14 @@ def parse_page_html(html: str) -> list[dict]:
             if re.fullmatch(r"\.+", plain):
                 continue
 
-            # Strip trailing sequences of 3+ dots (with optional spaces)
-            # used as visual line-fillers in Arabic books, e.g.
-            # "نص (١) . . . . . . . . . . . . . . . . . . . . ." → "نص (١)"
-            inner_html_clean = re.sub(r"(?:\s*\.\s*){3,}\s*$", "", inner_html).strip()
+            # Skip paragraphs that only contain tatweel/kashida (line fillers)
+            if re.fullmatch(r"[ـ\s]+", plain):
+                continue
+
+            # Remove runs of 4+ dots (with optional spaces) anywhere — these
+            # are visual line-fillers in Arabic books, not real ellipses.
+            # Exactly 3 dots are kept as a legitimate ellipsis (etc./...).
+            inner_html_clean = re.sub(r"(?:\s*\.\s*){4,}", "", inner_html).strip()
             if inner_html_clean:
                 inner_html = inner_html_clean
                 plain = _strip_tags(inner_html).strip()
