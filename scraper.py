@@ -2522,11 +2522,16 @@ def _normalize_ar(s: str) -> str:
     s = re.sub(r"\([\u0660-\u0669\d\s،,.\-\/أ-ي]*[\u0660-\u0669\d][\u0660-\u0669\d\s،,.\-\/أ-ي]*\)", "", s)
     # Strip single-letter markers like (أ) (no digit, just one letter)
     s = re.sub(r"\([\u0621-\u064A]\)", "", s)
+    # Strip star/asterisk footnote markers like (٭) or (*) — Shamela's
+    # convention for a page with only one footnote (no numbering needed).
+    s = re.sub(r"\(\s*[٭*]\s*\)", "", s)
     # Strip bracketed footnote/folio markers like [١] or [٤٧/أ] (must contain a digit).
     # Does NOT strip bracket headings like [التخامة في القبلة وفي الصلاة] (no digits).
     s = re.sub(r"\[[\u0660-\u0669\d\s،,.\-\/أ-ي]*[\u0660-\u0669\d][\u0660-\u0669\d\s،,.\-\/أ-ي]*\]", "", s)
     # Strip single-letter markers like [أ] (no digit, just one letter)
     s = re.sub(r"\[[\u0621-\u064A]\]", "", s)
+    # Strip star/asterisk bracket footnote markers like [٭] or [*]
+    s = re.sub(r"\[\s*[٭*]\s*\]", "", s)
     # Strip leading bracket annotations like [٤٧/أ] that are followed by
     # text (e.g. folio markers before a heading).  Bracket-only lines
     # like [الفصل الثالث] are untouched — they are stripped earlier by
@@ -2556,9 +2561,21 @@ def _normalize_ar(s: str) -> str:
     return s
 
 
+_BRACKET_FOOTNOTE_TRAILER_RE = re.compile(
+    r"\s*\((?:[\u0660-\u0669\d][\u0660-\u0669\d\s،,.\-\/أ-ي]*|[\u0621-\u064A]|[٭*])\)\s*$"
+)
+
+
 def _bracket_stripped(line_html: str) -> str | None:
     plain = _plain_text(line_html).strip()
-    m = re.match(r"^\[(.+)\]$", plain)
+    # Tolerate a trailing footnote-marker parenthetical right after the
+    # closing bracket, e.g. "[عنوان] (١)" or "[عنوان] (*)" — the title is
+    # still the bracketed part; the marker just points to a footnote and
+    # shouldn't stop this from being recognized as a bracket heading (which
+    # would otherwise fall through to a raw-line normalize that mistakes
+    # the whole bracketed title for a discardable leading annotation).
+    candidate = _BRACKET_FOOTNOTE_TRAILER_RE.sub("", plain)
+    m = re.match(r"^\[(.+)\]$", candidate)
     if not m:
         return None
     inner = m.group(1).strip()
@@ -2664,6 +2681,8 @@ def _has_extra_content(line_html: str, norm_label: str) -> bool:
     # Strip footnote markers to see if there is other text
     plain_no_fn = re.sub(r"\([\u0660-\u0669\d\s،,.\-\/أ-ي]+\)", "", plain)
     plain_no_fn = re.sub(r"\[[\u0660-\u0669\d\s،,.\-\/أ-ي]+\]", "", plain_no_fn)
+    plain_no_fn = re.sub(r"\(\s*[٭*]\s*\)", "", plain_no_fn)
+    plain_no_fn = re.sub(r"\[\s*[٭*]\s*\]", "", plain_no_fn)
     
     # Normalize both
     plain_norm = _normalize_ar(plain_no_fn)
@@ -2697,6 +2716,16 @@ def _find_label_in_lines(
     if not norm_label:
         return None, False
 
+    # First pass: scan the whole remaining page-line pool for either an
+    # exact match (the label alone spans 1-3 lines) or a prefix match (the
+    # label starts a longer line). Keep the FIRST prefix match as a
+    # fallback candidate, but don't return it immediately — short
+    # connector-word labels like "والثاني" or "الأول:" often also occur as
+    # ordinary words at the start of an unrelated prose sentence earlier in
+    # the page, before the real standalone heading line appears. An exact
+    # match found anywhere later is the much stronger signal of the real
+    # heading and must win over an earlier coincidental echo.
+    prefix_candidate: tuple[tuple[int, int], bool] | None = None
     for start in range(cursor, len(flat_lines)):
         for span_len in (1, 2, 3):
             end = start + span_len
@@ -2709,8 +2738,15 @@ def _find_label_in_lines(
                 span_len == 1
                 and len(norm_label) >= 4
                 and flat_lines[start][2].startswith(norm_label)
+                and prefix_candidate is None
             ):
-                return (start, start + 1), flat_lines[start][2] != norm_label
+                prefix_candidate = (
+                    (start, start + 1),
+                    flat_lines[start][2] != norm_label,
+                )
+
+    if prefix_candidate is not None:
+        return prefix_candidate
 
     # Fallback: label appears at the start of a line followed by a
     # non-alphanumeric character.  This handles TOC labels that are
@@ -3521,7 +3557,14 @@ def _fuzzy_match_remaining_implicits(
                 distance = abs(tgt_pid - src_pid)
                 if distance > 5:
                     continue
-                local_threshold = own_page_threshold if distance == 0 else threshold
+                local_threshold = threshold
+                if distance == 0 and len(norm_label.split()) >= 2:
+                    # Loosen the bar only for multi-word labels on their own
+                    # declared page. A single word (often just a connector
+                    # like "الأول"/"والثاني"/"الرابع") is too easy to match
+                    # coincidentally elsewhere in ordinary prose, so it still
+                    # has to clear the strict bar even on the right page.
+                    local_threshold = own_page_threshold
                 pos, score = _find_best_fuzzy_match(norm_label, tgt_flat, local_threshold)
                 if pos is None:
                     continue
@@ -3965,6 +4008,13 @@ def _render_page_html(
     suppressed_positions: set[tuple[int, int]] = set()
 
     page_start_headings: list[dict] = []
+    # Positions of body lines that belong to an at_page_top heading with
+    # keep_line=True. Those lines are deliberately left unsuppressed (see
+    # below) because they carry extra content beyond the label — but the
+    # label itself is still the line's own prefix and must be stripped in
+    # the fallback render branch, or it prints twice (once as the styled
+    # heading, once again as the raw body line).
+    page_top_body_headings: dict[tuple[int, int], list[dict]] = {}
     for h in resolved_headings:
         pi, li = h["positions"][0]
         for pos in h.get("suppress", []):
@@ -3973,6 +4023,8 @@ def _render_page_html(
             suppressed_positions.add(tuple(pos))
         if h.get("at_page_top"):
             page_start_headings.append(h)
+            if h.get("keep_line"):
+                page_top_body_headings.setdefault((pi, li), []).append(h)
         else:
             heading_by_start.setdefault((pi, li), []).append(h)
         for pos in h["positions"][1:]:
@@ -4208,6 +4260,15 @@ def _render_page_html(
                 elif (pi, li) in suppressed_positions:
                     continue
                 body_line = line.strip()
+                top_headings_here = page_top_body_headings.get((pi, li))
+                if top_headings_here:
+                    for th in top_headings_here:
+                        stripped = _strip_heading_prefix(body_line, th["text"])
+                        if stripped != body_line:
+                            body_line = stripped
+                            break
+                    if not body_line:
+                        continue
                 if ptype == "heading":
                     parts.append(f'<p class="chapter-heading">{body_line}</p>')
                 else:
@@ -5251,35 +5312,35 @@ def build_docx(
 
     # ── COVER ────────────────────────────────────────────────────────
     title_p = doc.add_paragraph()
-    title_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     _docx_set_bidi(title_p)
     _docx_add_run(
         title_p,
         "بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ",
         font_name=_DOCX_FONT_HEAD,
-        size=13,
+        size=16,
         color_hex=_DOCX_GOLD,
     )
     doc.add_paragraph()
 
     book_title_p = doc.add_paragraph()
-    book_title_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    book_title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     _docx_set_bidi(book_title_p)
     _docx_add_run(
         book_title_p,
         meta.get("title", "كتاب"),
         font_name=_DOCX_FONT_HEAD,
-        size=28,
+        size=34,
         bold=True,
         color_hex=_DOCX_INK,
     )
 
     if volume_label:
         vol_p = doc.add_paragraph()
-        vol_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        vol_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         _docx_set_bidi(vol_p)
         _docx_add_run(
-            vol_p, f"الجزء {volume_label}", font_name=_DOCX_FONT_HEAD, size=17, color_hex=_DOCX_GOLD_L
+            vol_p, f"الجزء {volume_label}", font_name=_DOCX_FONT_HEAD, size=20, color_hex=_DOCX_GOLD_L
         )
 
     doc.add_paragraph()
@@ -5304,17 +5365,17 @@ def build_docx(
                 cp = cell.paragraphs[0]
                 cp.alignment = WD_ALIGN_PARAGRAPH.LEFT
                 _docx_set_bidi(cp)
-                _docx_add_run(cp, text, font_name=_DOCX_FONT_BODY, size=11, bold=bold)
+                _docx_add_run(cp, text, font_name=_DOCX_FONT_BODY, size=13, bold=bold)
 
     src_p = doc.add_paragraph()
-    src_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    src_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     _docx_set_bidi(src_p)
     scraped_date = datetime.date.today().strftime("%Y-%m-%d")
     _docx_add_run(
         src_p,
         f"المصدر: {meta.get('url', '')} | تاريخ التحميل: {scraped_date}",
         font_name=_DOCX_FONT_BODY,
-        size=9,
+        size=11,
         color_hex="888888",
     )
     pending_page_break = True  # next major heading (bio or body) starts a fresh page
