@@ -2535,8 +2535,12 @@ def _normalize_ar(s: str) -> str:
     # Strip leading bracket annotations like [٤٧/أ] that are followed by
     # text (e.g. folio markers before a heading).  Bracket-only lines
     # like [الفصل الثالث] are untouched — they are stripped earlier by
-    # _bracket_stripped before reaching this function.
-    s = re.sub(r"^\[[^\]]*\]\s+", "", s)
+    # _bracket_stripped before reaching this function. The lookahead
+    # requires real content after the whitespace: without it, a bracketed
+    # title left with only trailing whitespace (e.g. after a footnote
+    # marker right after it was already stripped away) would have its
+    # entire title erased here instead of just the annotation.
+    s = re.sub(r"^\[[^\]]*\]\s+(?=\S)", "", s)
     # Normalise common Arabic letter variants: alif forms → bare alif,
     # alif maqsura → yaa, taa marbouta → haa, hamza-on-waw → waw,
     # hamza-on-ya → yaa.  This catches OCR / spelling mismatches
@@ -4163,7 +4167,11 @@ def _render_page_html(
             # string. If left in place, a lone diacritic with no base letter
             # renders as an orphaned dotted-circle glyph (U+25CC) in
             # Arabic-aware fonts once it becomes the start of the remainder.
-            while i < len(body) and not _normalize_ar(body[i]):
+            # Also consume a star/asterisk footnote marker (٭ or *) here: its
+            # surrounding parens/spaces normalize away and get skipped, but
+            # the star character itself doesn't, so without this it would
+            # strand a bare "*)" fragment as a stray leftover body line.
+            while i < len(body) and (not _normalize_ar(body[i]) or body[i] in "٭*"):
                 i += 1
             remaining = body[i:].strip().lstrip(" ,.-،:")
             return remaining
