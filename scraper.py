@@ -1049,6 +1049,30 @@ def _strip_tags(html_str: str) -> str:
     return BeautifulSoup(html_str, "lxml").get_text(" ", strip=True)
 
 
+def _clean_page_paragraphs(page: dict) -> None:
+    """Clean visual fillers from page paragraphs in-place: tatweel-only lines
+    are blanked, dot-only lines are blanked, 4+ dot runs are removed."""
+    paras = page.get("paragraphs")
+    if not paras:
+        return
+    for para in paras:
+        lines = para.get("lines")
+        if not lines:
+            continue
+        new_lines = []
+        for line in lines:
+            plain = _strip_tags(line).strip()
+            if re.fullmatch(r"[ـ\s]+", plain):
+                new_lines.append("")
+                continue
+            if re.fullmatch(r"\.+", plain):
+                new_lines.append("")
+                continue
+            cleaned = re.sub(r"(?:\s*\.\s*){4,}", "", line).strip()
+            new_lines.append(cleaned)
+        para["lines"] = new_lines
+
+
 def parse_page_html(html: str) -> list[dict]:
     """
     Extract page entries from a shamela page HTML blob.
@@ -2562,6 +2586,9 @@ def _normalize_ar(s: str) -> str:
     # Strip leading Arabic-Indic / Latin digits followed by a separator
     # so eg body "١- رأى أرسطوطاليس..." matches TOC "رأي أرسطوطاليس...".
     s = re.sub(r"^[\u0660-\u06690-9]+[\s\-\.\)\]\}]*", "", s).strip()
+    # Strip leading و (waaw conjunction prefix) so body "ودليل ..." matches
+    # TOC label "دليل ...". Only strip at start, only before an Arabic letter.
+    s = re.sub(r"^\u0648(?=[\u0621-\u064A])", "", s).strip()
     return s
 
 
@@ -3097,6 +3124,9 @@ def resolve_book_headings(meta: dict, pages_iter):
     counters = [0] * 20
 
     for page in pages_iter:
+        # Strip visual fillers (tatweel, dot-only lines, 4+ dot runs)
+        _clean_page_paragraphs(page)
+
         # url_page_id is the Shamela URL sequence ID (same namespace as TOC
         # page_id).  page_id is the printed page number from data-page-id —
         # a different namespace that must NOT be used for TOC matching.
