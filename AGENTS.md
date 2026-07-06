@@ -1,6 +1,8 @@
-- Always work on `dev` branch, never on `master`.
+- Always work on `dev` branch, never on `main` (master equivalent).
 
-- Always when asked to commit,write a detailed commit description
+- Always before committing, merging, pushing, or releasing: ensure we are on the `dev` branch first. If on `main`, switch to `dev` before proceeding. After any merge/push/release, always switch back to `dev`.
+
+- Always when asked to commit, write a detailed commit description
 
 - Never commit, merge or push without asking me first and waiting for my explicit approval.
 
