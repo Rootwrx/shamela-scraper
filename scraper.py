@@ -2553,6 +2553,12 @@ def _normalize_ar(s: str) -> str:
     s = s.replace("\u0624", "\u0648")  # ؤ → و
     s = s.replace("\u0626", "\u064a")  # ئ → ي
     s = _TASHKEEL_RE.sub("", s)
+    # Strip leading و (waaw) conjunction prefix — body text often has
+    # "ودليل ..." while the TOC label is just "دليل ...".  Only strip
+    # when followed by an Arabic letter (not a digit or whitespace) so
+    # words like "وضوء" or "واحد" are not affected in non-initial
+    # position (the regex is anchored to ^).
+    s = re.sub(r"^\u0648(?=[\u0621-\u064A])", "", s)
     # Replace Arabic punctuation with space so labels that differ only by
     # commas, dashes, etc. still match (e.g. TOC "طيب في نفسه صاحب خير" vs
     # body "طيب في نفسه، صاحب خير").
