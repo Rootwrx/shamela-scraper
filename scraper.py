@@ -1332,10 +1332,10 @@ def _prefix_headings_by_juz(
             if level < 0:
                 level = 0
             h["_nh_level"] = level
-            # In single-PDF mode, headings at normalized level >= 2
-            # (which would produce 4+ parts with the juz prefix)
-            # are subtitles and should NOT be numbered at all.
-            if include_juz_prefix and level > 1:
+            # In single-PDF mode, headings at normalized level >= 3
+            # (which would produce 5+ parts with the juz prefix)
+            # are too deep for outline numbering and get no number.
+            if include_juz_prefix and level > 2:
                 h["number"] = ""
                 continue
             if level >= len(counters):
@@ -2455,10 +2455,6 @@ def _build_html_css(meta: dict, columns: int = 1, fast: bool = False) -> str:
     }}
     /* Per-level heading colors + sizes from style config */
     {_build_heading_level_css()}
-    /* Auto-detected bracket headings — italic */
-    .toc-numbered-heading.toc-nh-auto {{
-        font-style: italic;
-    }}
     /* Level shape marker */
     .heading-shape {{
         font-size: 0.7em;
@@ -3625,6 +3621,23 @@ def _fuzzy_match_remaining_implicits(
 
             if best_pos is None:
                 continue
+
+            # ── Inversion guard: don't move a parent heading past its child ──
+            h_uid = h.get("_uid")
+            if h_uid and best_tgt_idx is not None:
+                new_parent_key = (best_tgt_idx, best_pos[0], best_pos[1])
+                skip_move = False
+                for _pi, _pg in enumerate(pages):
+                    for _hh in _pg.get("resolved_headings", []):
+                        if _hh.get("toc_parent_uid") == h_uid:
+                            child_key = (_pi, _hh["positions"][0][0], _hh["positions"][0][1])
+                            if child_key <= new_parent_key:
+                                skip_move = True
+                                break
+                    if skip_move:
+                        break
+                if skip_move:
+                    continue
 
             pi, li = best_pos
             page["resolved_headings"] = [
