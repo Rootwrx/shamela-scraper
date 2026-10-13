@@ -692,6 +692,18 @@ def fetch_book_meta(session: requests.Session, book_id: int) -> dict:
             elif label == "المحقق":
                 meta["editor"] = value
 
+        ## ADDED TO FIX BOOK TITLE NOT APPEARING BECAUSE OF PATTERN IN THE TEXT
+        # Some books have no "الكتاب:" label: the title is the unlabeled
+        # line directly above "المؤلف:".
+        if not meta.get("title"):
+            lines = [l.strip() for l in raw.splitlines()]
+            for i, line in enumerate(lines):
+                if line.split(":", 1)[0].strip() == "المؤلف" and ":" in line and i > 0:
+                    prev = lines[i - 1]
+                    if prev and ":" not in prev:
+                        meta["title"] = prev
+                    break
+                    
     # ── category from breadcrumb ─────────────────────────────────────────
     cat_link = soup.select_one("ol.breadcrumb a[href*='/category/']")
     if cat_link:
@@ -1467,7 +1479,11 @@ def _fetch_one(args_tuple) -> tuple[int, str | None, str | None]:
         data = resp.json()
         pid = data.get("pageId", page_id)
         pnum = data.get("pageNum", "")
-        nid = (data.get("nextId") or "").strip()
+        # nid = (data.get("nextId") or "").strip()
+        # ADDEDD 2 lines
+        _nid = data.get("nextId")
+        nid = "" if _nid in (None, "", 0) else str(_nid).strip()
+        ##
         nass = data.get("nass", "")
         html = f'<div data-page-id="{pid}" data-page-num="{pnum}" data-next-id="{nid}">{nass}</div>'
         return page_id, html, None
