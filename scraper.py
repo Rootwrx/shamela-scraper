@@ -5605,73 +5605,66 @@ def process_book(
     book_id = int(book_id)
     entry = manifest.book(book_id)
 
-    # ── Rebuild from cached data on disk, no network. Without this, a book
-    # that was already marked "done" from a prior run would get skipped
-    # entirely by the "already done" check below, even when --docx is
-    # asking for a format that was never actually built yet.
-    # Rebuild from cached data if we can skip network (--docx, --md, --override)
-    if (args.docx or args.md or args.override) and entry.get("dir") and not args.force:
+        # Which outputs does this run want?
+    want_docx = getattr(args, "docx", False)
+    want_md = getattr(args, "md", False)
+    want_pdf = getattr(args, "pdf", None)
+    if (want_docx or want_md) and want_pdf is None:
+        want_pdf = False
+    elif want_pdf is None:
+        want_pdf = True
+    want_json = getattr(args, "save_json", False)
+
+    if entry.get("dir") and not args.force:
         bd = Path(out_dir) / entry["dir"]
+
+        wanted = {"pdf": want_pdf, "docx": want_docx, "md": want_md}
+        if args.json_only:
+            wanted = {k: False for k in wanted}
+
+        # --override rebuilds everything requested; otherwise only what's missing
+        missing = {
+            fmt
+            for fmt, wanted_it in wanted.items()
+            if wanted_it and (args.override or not any(bd.glob(f"*.{fmt}")))
+        }
+        json_missing = want_json and (
+            args.override or not (bd / f"book_{book_id}.json").exists()
+        )
+
+        # 1) Nothing left to build -> skip
+        if bd.exists() and not missing and not json_missing and (
+            not args.override
+        ) and (entry.get("status") == "done" or any(wanted.values())):
+            print(
+                f"[skip] book {book_id} ({entry.get('title', '')}) "
+                f"— requested output already exists (pass --override to rebuild)"
+            )
+            return
+
+        # 2) Scraped already, some outputs missing -> build only those, no network
         meta = load_json(bd / "meta.json")
         author_info = load_json(bd / "author_info.json")
         pages_path = bd / "pages.jsonl"
         has_pages = pages_path.exists() and pages_path.stat().st_size > 0
-        if meta and author_info is not None and has_pages:
-            book_dir = bd
-            print(
-                f"[*] Using cached data for book {book_id} ({meta.get('title', '?')})"
-            )
-            # Jump straight to heading resolution + output build (skip network)
+        if meta and author_info is not None and has_pages and (
+            entry.get("status") == "done" or args.override
+        ):
+            print(f"[*] Using cached data for book {book_id} ({meta.get('title', '?')})")
+            if args.override:
+                build_args = args
+            else:
+                build_args = argparse.Namespace(**vars(args))
+                build_args.pdf = "pdf" in missing
+                build_args.docx = "docx" in missing
+                build_args.md = "md" in missing
+                build_args.save_json = json_missing
+                print(f"    building only: {', '.join(sorted(missing)) or 'json'}")
             _build_book_outputs(
-                meta, author_info, book_dir, book_id, args, entry, manifest,
+                meta, author_info, bd, book_id, build_args, entry, manifest,
                 need_scrape=False,
             )
             return
-        if meta and author_info is not None and not has_pages:
-            print(
-                f"  [!] --docx/--md requested for book {book_id} but no scraped "
-                f"page data found on disk — scraping first, then building output(s) ..."
-            )
-        else:
-            print(
-                f"  [!] Cached data incomplete for book {book_id}, falling back to network"
-            )
-
-    # --override: when absent (default), skip if output files already exist.
-    if not getattr(args, "override", False) and not args.force:
-        prev_dir = entry.get("dir")
-        if prev_dir:
-            bd = Path(out_dir) / prev_dir
-            want_docx = getattr(args, "docx", False)
-            want_md = getattr(args, "md", False)
-            want_pdf = getattr(args, "pdf", None)
-            if want_md and want_pdf is None:
-                want_pdf = False
-            elif want_pdf is None:
-                want_pdf = True
-            out_patterns = []
-            if want_pdf:
-                out_patterns.append("*.pdf")
-            if want_docx:
-                out_patterns.append("*.docx")
-            if want_md:
-                out_patterns.append("*.md")
-            if bd.exists() and any(list(bd.glob(p)) for p in out_patterns):
-                print(
-                    f"[skip] book {book_id} ({entry.get('title', '')}) "
-                    f"— output already exists (pass --override to rebuild)"
-                )
-                return
-
-    if (
-        entry.get("status") == "done"
-        and not args.force
-        and not args.override
-        and not args.docx
-        and not args.md
-    ):
-        print(f"[skip] book {book_id} ({entry.get('title', '')}) — already done")
-        return
 
     if args.force and entry.get("dir"):
         # With --force, clear the cached dir so resolve_book_dir recomputes
