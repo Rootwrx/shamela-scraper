@@ -399,9 +399,7 @@ class CloudflareCookieManager:
 
     def __init__(self, session, cf_txt: str | Path | None = None):
         self._session = session
-        self._cf_txt = (
-            Path(cf_txt or Path.home() / "shamela" / "cf.txt").expanduser().resolve()
-        )
+        self._cf_txt = Path(cf_txt or Path.cwd() / "cf.txt").expanduser().resolve()
         self._refresh_lock = threading.Lock()
         self._load_cookie()
 
@@ -6339,8 +6337,7 @@ def main():
     )
 
     if args.cf_clearance:
-        cf_txt = Path.home() / "shamela" / "cf.txt"
-        cf_txt.parent.mkdir(parents=True, exist_ok=True)
+        cf_txt = Path.cwd() / "cf.txt"
         cf_txt.write_text(args.cf_clearance)
         session._load_cookie()
 

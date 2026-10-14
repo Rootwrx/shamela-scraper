@@ -7,10 +7,13 @@ import sys
 import tempfile
 from pathlib import Path
 
+# COOKIE_DB = Path(
+#     "/run/user/1000/psd/hex0r-firefox-qoa4ljye.default-release/cookies.sqlite"
+# )
 COOKIE_DB = Path(
-    "/run/user/1000/psd/hex0r-firefox-qoa4ljye.default-release/cookies.sqlite"
+    "/mnt/c/Users/hex0r/AppData/Roaming/Mozilla/Firefox/Profiles/7ls9wx29.default-release/cookies.sqlite"
 )
-OUTPUT = Path.home() / "shamela" / "cf.txt"
+OUTPUT = Path.cwd() / "cf.txt"
 
 
 def get_cf_clearance() -> str | None:
