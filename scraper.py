@@ -148,10 +148,10 @@ from curl_cffi import requests
 STYLE_CFG: dict = {}
 
 DEFAULT_STYLE_CFG = {
-    "fonts": {"heading": "Scheherazade New", "body": "Scheherazade New"},
+    "fonts": {"heading": "Scheherazade New", "body": "Amiri Quran"},
     "body_size_pdf": 14,
-    "body_size_docx": 18,
-    "line_height_docx": 1.5,
+    "body_size_docx": 16,
+    "line_height_docx": 1.3,
     "palette": {
         "gold": "#c99200",
         "gold_light": "#e8b830",
