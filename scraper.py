@@ -151,6 +151,7 @@ DEFAULT_STYLE_CFG = {
     "fonts": {"heading": "Scheherazade New", "body": "Scheherazade New"},
     "body_size_pdf": 14,
     "body_size_docx": 18,
+    "line_height_docx": 1.5,
     "palette": {
         "gold": "#c99200",
         "gold_light": "#e8b830",
@@ -4797,6 +4798,38 @@ def _docx_set_run_rtl_font(run, font_name: str = _DOCX_FONT_BODY) -> None:
     rFonts.set(qn("w:hAnsi"), font_name)
 
 
+# Successor tags (schema order) for inserting <w:bCs> / <w:szCs> into <w:rPr>.
+_RPR_AFTER_BCS = (
+    "w:i", "w:iCs", "w:caps", "w:smallCaps", "w:strike", "w:dstrike",
+    "w:outline", "w:shadow", "w:emboss", "w:imprint", "w:noProof",
+    "w:snapToGrid", "w:vanish", "w:webHidden", "w:color", "w:spacing",
+    "w:w", "w:kern", "w:position", "w:sz", "w:szCs", "w:highlight", "w:u",
+    "w:effect", "w:bdr", "w:shd", "w:fitText", "w:vertAlign", "w:rtl",
+    "w:cs", "w:em", "w:lang", "w:eastAsianLayout", "w:specVanish", "w:oMath",
+)
+_RPR_AFTER_SZCS = _RPR_AFTER_BCS[_RPR_AFTER_BCS.index("w:szCs") + 1 :]
+
+
+def _docx_set_cs_size(rPr, pt: float) -> None:
+    """Write <w:szCs> (complex-script size).  python-docx has no API for it,
+    and Word sizes Arabic text from szCs, NOT from w:sz."""
+    for old in rPr.findall(qn("w:szCs")):
+        rPr.remove(old)
+    el = OxmlElement("w:szCs")
+    el.set(qn("w:val"), str(int(round(float(pt) * 2))))  # half-points
+    rPr.insert_element_before(el, *_RPR_AFTER_SZCS)
+
+
+def _docx_set_cs_bold(rPr, on: bool) -> None:
+    """Write <w:bCs> explicitly — Word takes Arabic weight from bCs, not w:b."""
+    for old in rPr.findall(qn("w:bCs")):
+        rPr.remove(old)
+    el = OxmlElement("w:bCs")
+    if not on:
+        el.set(qn("w:val"), "0")
+    rPr.insert_element_before(el, *_RPR_AFTER_BCS)
+
+
 def _docx_add_run(
     paragraph,
     text: str,
@@ -4808,13 +4841,12 @@ def _docx_add_run(
 ) -> None:
     run = paragraph.add_run(text)
     _docx_set_run_rtl_font(run, font_name)
+    rPr = run._r.get_or_add_rPr()
     if size:
         run.font.size = Pt(size)
-        run.font.cs_size = Pt(size)
+        _docx_set_cs_size(rPr, size)
     run.font.bold = bold
-    run.font.cs_bold = bold  # w:bCs — Word renders Arabic/RTL weight from
-    # bCs, not b, since the run is marked complex_script=True. Without this,
-    # "bold" text stays visually thin no matter what w:b says.
+    _docx_set_cs_bold(rPr, bold)
     if color_hex:
         run.font.color.rgb = RGBColor.from_string(color_hex.lstrip("#").upper())
 
@@ -4960,7 +4992,8 @@ def _docx_add_hamesh(doc, div_tag) -> None:
         _docx_set_bidi(para)
         para.paragraph_format.space_before = Pt(0)
         para.paragraph_format.space_after = Pt(2)
-        _docx_add_inline_html(para, p, font_name=_DOCX_FONT_BODY, size=10, color_hex="555555")
+        _hsz = max(10, STYLE_CFG.get("body_size_docx", DEFAULT_STYLE_CFG["body_size_docx"]) - 3)
+        _docx_add_inline_html(para, p, font_name=_DOCX_FONT_BODY, size=_hsz, bold=True, color_hex="555555")
 
 
 def _docx_emit_fragment(doc, container, max_toc_level: int = -1) -> None:
@@ -5048,10 +5081,14 @@ def _docx_setup_styles(doc) -> None:
     normal.font.name = _DOCX_FONT_BODY
     _body_pt = Pt(STYLE_CFG.get("body_size_docx", DEFAULT_STYLE_CFG["body_size_docx"]))
     normal.font.size = _body_pt
-    normal.font.cs_size = _body_pt
     normal.font.bold = True
-    normal.font.cs_bold = True  # w:bCs — required for RTL/Arabic weight in Word
+    # Line height as a multiple of the font's natural line (Arabic fonts like
+    # Scheherazade have tall diacritics, so 1.0 looks cramped).
+    _line_h = float(STYLE_CFG.get("line_height_docx", DEFAULT_STYLE_CFG["line_height_docx"]))
+    normal.paragraph_format.line_spacing = _line_h
     rpr = normal.element.get_or_add_rPr()
+    _docx_set_cs_size(rpr, _body_pt.pt)  # w:szCs — Arabic size in Word
+    _docx_set_cs_bold(rpr, True)         # w:bCs — Arabic weight in Word
     rFonts = rpr.get_or_add_rFonts()
     rFonts.set(qn("w:cs"), _DOCX_FONT_BODY)
     _docx_style_set_bidi(normal)
@@ -5059,9 +5096,12 @@ def _docx_setup_styles(doc) -> None:
     body_style = doc.styles.add_style("Shamela Body", WD_STYLE_TYPE.PARAGRAPH)
     body_style.base_style = normal
     body_style.font.bold = True
-    body_style.font.cs_bold = True
+    body_style.font.size = _body_pt
+    _bs_rpr = body_style.element.get_or_add_rPr()
+    _docx_set_cs_size(_bs_rpr, _body_pt.pt)
+    _docx_set_cs_bold(_bs_rpr, True)
     body_style.paragraph_format.space_after = Pt(4)
-    body_style.paragraph_format.line_spacing = 1.0
+    body_style.paragraph_format.line_spacing = _line_h
     body_style.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.LEFT
     _docx_style_set_bidi(body_style)
 
@@ -5478,7 +5518,11 @@ def build_docx(
                 bp = doc.add_paragraph()
                 bp.alignment = WD_ALIGN_PARAGRAPH.LEFT
                 _docx_set_bidi(bp)
-                _docx_add_run(bp, line.strip(), font_name=_DOCX_FONT_BODY, size=15)
+                _docx_add_run(
+                    bp, line.strip(), font_name=_DOCX_FONT_BODY,
+                    size=STYLE_CFG.get("body_size_docx", DEFAULT_STYLE_CFG["body_size_docx"]),
+                    bold=True,
+                )
         pending_page_break = True  # body text starts a fresh page after the bio
 
     # ── BOOK TEXT ────────────────────────────────────────────────────

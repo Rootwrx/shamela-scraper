@@ -1,10 +1,11 @@
 {
   "fonts": {
     "heading": "Scheherazade New",
-    "body": "Scheherazade New"
+    "body": "Amiri Quran"
   },
   "body_size_pdf": 14,
-  "body_size_docx": 15,
+  "body_size_docx": 16,
+  "line_height_docx": 1.3,
   "palette": {
     "gold": "#c99200",
     "gold_light": "#e8b830",
