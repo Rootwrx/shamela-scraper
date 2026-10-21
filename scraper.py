@@ -148,10 +148,10 @@ from curl_cffi import requests
 STYLE_CFG: dict = {}
 
 DEFAULT_STYLE_CFG = {
-    "fonts": {"heading": "Scheherazade New", "body": "Amiri Quran"},
+    "fonts": {"heading": "Amiri Quran", "body": "Amiri Quran"},
     "body_size_pdf": 14,
-    "body_size_docx": 16,
-    "line_height_docx": 1.3,
+    "body_size_docx": 17,
+    "line_height_docx": 0.8,
     "palette": {
         "gold": "#c99200",
         "gold_light": "#e8b830",
@@ -5666,12 +5666,23 @@ def process_book(
         if args.json_only:
             wanted = {k: False for k in wanted}
 
-        # --override rebuilds everything requested; otherwise only what's missing
+        def _has_output(fmt: str) -> bool:
+            # --single produces book_<id>.<fmt>; per-juz files must not count
+            if getattr(args, "single", False):
+                return (bd / f"book_{book_id}.{fmt}").exists()
+            return any(bd.glob(f"*.{fmt}"))
+
         missing = {
             fmt
             for fmt, wanted_it in wanted.items()
-            if wanted_it and (args.override or not any(bd.glob(f"*.{fmt}")))
+            if wanted_it and (args.override or not _has_output(fmt))
         }
+        # --override rebuilds everything requested; otherwise only what's missing
+        # missing = {
+        #     fmt
+        #     for fmt, wanted_it in wanted.items()
+        #     if wanted_it and (args.override or not any(bd.glob(f"*.{fmt}")))
+        # }
         json_missing = want_json and (
             args.override or not (bd / f"book_{book_id}.json").exists()
         )
