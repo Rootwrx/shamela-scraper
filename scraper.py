@@ -2205,6 +2205,12 @@ def _build_html_css(meta: dict, columns: int = 1, fast: bool = False) -> str:
        GLOBAL TYPOGRAPHY
        ═══════════════════════════════════════════════════════ */
     * {{ box-sizing: border-box; }}
+    /* never italic: kill <i>/<em>/<cite>/etc. from source HTML and
+       any synthesized/fallback-font oblique */
+    *, i, em, cite, address, dfn, var {{
+        font-style: normal !important;
+        font-synthesis: weight !important;
+    }}
 
     body {{
         font-family: {font_body};
@@ -4830,6 +4836,17 @@ def _docx_set_cs_bold(rPr, on: bool) -> None:
     rPr.insert_element_before(el, *_RPR_AFTER_BCS)
 
 
+def _docx_set_cs_italic(rpr, on: bool) -> None:
+    """w:iCs — complex-script (Arabic) italic flag."""
+    for el in rpr.findall(qn("w:iCs")):
+        rpr.remove(el)
+    ics = OxmlElement("w:iCs")
+    if not on:
+        ics.set(qn("w:val"), "0")
+    # schema order: iCs sits right after i, before caps/color/sz/...
+    rpr.insert_element_before(ics, *_RPR_AFTER_BCS[2:])
+
+
 def _docx_add_run(
     paragraph,
     text: str,
@@ -4846,7 +4863,9 @@ def _docx_add_run(
         run.font.size = Pt(size)
         _docx_set_cs_size(rPr, size)
     run.font.bold = bold
+    run.font.italic = False
     _docx_set_cs_bold(rPr, bold)
+    _docx_set_cs_italic(rPr, False)
     if color_hex:
         run.font.color.rgb = RGBColor.from_string(color_hex.lstrip("#").upper())
 
@@ -5116,7 +5135,9 @@ def _docx_setup_styles(doc) -> None:
             continue
         heading_style.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.LEFT
         _docx_style_set_bidi(heading_style)
+        heading_style.font.italic = False  # python-docx's Heading 4/6/7/9 are italic by default
         hrpr = heading_style.element.get_or_add_rPr()
+        _docx_set_cs_italic(hrpr, False)
         hFonts = hrpr.get_or_add_rFonts()
         hFonts.set(qn("w:cs"), _DOCX_FONT_HEAD)
 
@@ -5666,6 +5687,7 @@ def process_book(
         if args.json_only:
             wanted = {k: False for k in wanted}
 
+        # --override rebuilds everything requested; otherwise only what's missing
         def _has_output(fmt: str) -> bool:
             # --single produces book_<id>.<fmt>; per-juz files must not count
             if getattr(args, "single", False):
@@ -5677,12 +5699,6 @@ def process_book(
             for fmt, wanted_it in wanted.items()
             if wanted_it and (args.override or not _has_output(fmt))
         }
-        # --override rebuilds everything requested; otherwise only what's missing
-        # missing = {
-        #     fmt
-        #     for fmt, wanted_it in wanted.items()
-        #     if wanted_it and (args.override or not any(bd.glob(f"*.{fmt}")))
-        # }
         json_missing = want_json and (
             args.override or not (bd / f"book_{book_id}.json").exists()
         )
